@@ -52,13 +52,15 @@ export default function Breadcrumbs() {
   const params = useParams();
   const crumbs = buildCrumbs(pathname, params);
 
-  if (crumbs.length === 0) return null;
+  // Hide on top-level pages — the page title already says where you are.
+  // Only show the trail on nested routes (e.g. /templates/new, /sequences/:id/edit).
+  if (crumbs.length < 2) return null;
 
   return (
     <div className="relative z-10">
       <nav
         aria-label="Breadcrumb"
-        className="mx-auto flex h-10 max-w-[1600px] items-center px-4 pt-3 text-sm md:px-6"
+        className="mx-auto flex h-7 max-w-[1600px] items-center px-4 pt-2 text-xs md:px-6"
       >
         <ol className="flex items-center gap-1.5">
           <li>

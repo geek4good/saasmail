@@ -229,25 +229,23 @@ export default function PersonDetail({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Person header */}
-      <div className="shrink-0 border-b border-border bg-card px-6 pb-4 pt-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-xl font-extrabold tracking-tight text-text-primary">
+      {/* Person header — name + email + meta on a single visual block */}
+      <div className="shrink-0 border-b border-border bg-card px-4 pb-2.5 pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <h2 className="truncate text-base font-extrabold tracking-tight text-text-primary">
               {person.name || person.email}
             </h2>
             {person.name && (
-              <p className="mt-0.5 truncate text-sm font-light text-text-tertiary">
+              <span className="truncate text-xs font-light text-text-tertiary">
                 {person.email}
-              </p>
+              </span>
             )}
-            <p className="mt-2 text-xs text-text-secondary">
-              {person.totalCount} message
+            <span className="text-[11px] text-text-tertiary">
+              · {person.totalCount} message
               {person.totalCount !== 1 ? "s" : ""}
-              {inboxGroups.length > 1
-                ? ` across ${inboxGroups.length} inboxes`
-                : ""}
-            </p>
+              {inboxGroups.length > 1 ? ` · ${inboxGroups.length} inboxes` : ""}
+            </span>
           </div>
 
           <div className="shrink-0">
@@ -259,7 +257,7 @@ export default function PersonDetail({
             ) : (
               <button
                 onClick={() => setEnrollModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-[8px] border border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-card px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
               >
                 Add to sequence
               </button>
@@ -275,7 +273,7 @@ export default function PersonDetail({
       {inboxGroups.length > 0 && (
         <div className="shrink-0 border-b border-border bg-card/60">
           <div
-            className="smooth-scroll flex gap-1 overflow-x-auto px-3 py-2 sm:flex-wrap sm:overflow-visible"
+            className="smooth-scroll flex gap-0.5 overflow-x-auto px-2 py-1 sm:flex-wrap sm:overflow-visible"
             style={{ scrollSnapType: "x proximity" }}
           >
             {inboxGroups.map((group) => {
@@ -292,7 +290,7 @@ export default function PersonDetail({
                   title={`${group.inbox} · ${mode} mode`}
                   style={{ scrollSnapAlign: "start" }}
                   className={cn(
-                    "inline-flex shrink-0 items-center gap-2 rounded-[8px] px-3 py-1.5 text-sm transition-all",
+                    "inline-flex shrink-0 items-center gap-1.5 rounded-[5px] px-2 py-1 text-xs transition-all",
                     isActive
                       ? "bg-text-primary/[0.05] text-text-primary ring-1 ring-text-primary/10"
                       : "text-text-secondary hover:bg-bg-muted/70 hover:text-text-primary",
@@ -301,19 +299,19 @@ export default function PersonDetail({
                   {/* Mode-aware accent dot — color stable per inbox */}
                   <span
                     className={cn(
-                      "h-2 w-2 shrink-0 rounded-full",
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
                       mode === "chat" ? "" : "opacity-60",
                     )}
                     style={{ backgroundColor: accent }}
                     aria-hidden
                   />
                   <span className="font-medium">{label}</span>
-                  <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-bg-muted px-1.5 text-[10px] font-semibold tabular-nums text-text-secondary">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-muted px-1 text-[10px] font-semibold tabular-nums text-text-secondary">
                     {group.emails.length}
                   </span>
                   {unread > 0 && (
                     <span
-                      className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums text-white"
+                      className="inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums text-white"
                       style={{ backgroundColor: "#7c5cfc" }}
                       aria-label={`${unread} unread`}
                     >

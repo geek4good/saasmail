@@ -65,27 +65,27 @@ export default function InboxToolbar({
     !!filters.recipient || !!filters.unread || !!filters.hasAttachment;
 
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded-[10px] bg-card p-1.5 ring-1 ring-border">
+    <div className="flex flex-wrap items-center gap-1 rounded-[8px] bg-card p-1 ring-1 ring-border">
       {/* Search — borderless inside the unified bar. On mobile takes full
           width, on desktop sits inline with filters. */}
-      <div className="relative w-full min-w-[180px] flex-1 sm:w-auto sm:max-w-xs">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+      <div className="relative w-full min-w-[160px] flex-1 sm:w-auto sm:max-w-[220px]">
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-tertiary" />
         <input
           data-testid="person-search-input"
           type="text"
           placeholder="Search..."
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="h-10 w-full rounded-[6px] border-0 bg-transparent pl-9 pr-8 text-base text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-text-primary/15 sm:h-8 sm:pl-8 sm:pr-7 sm:text-sm"
+          className="h-9 w-full rounded-[6px] border-0 bg-transparent pl-7 pr-7 text-base text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-text-primary/15 sm:h-7 sm:text-sm"
         />
         {search && (
           <button
             data-testid="person-search-clear"
             onClick={() => onSearchChange("")}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full p-1 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
             aria-label="Clear search"
           >
-            <X className="h-4 w-4 sm:h-3 sm:w-3" />
+            <X className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
           </button>
         )}
       </div>
@@ -191,9 +191,9 @@ export default function InboxToolbar({
               hasAttachment: false,
             })
           }
-          className="inline-flex h-8 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+          className="inline-flex h-7 items-center gap-1 rounded-[5px] px-1.5 text-xs font-medium text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
         >
-          <X size={12} />
+          <X size={11} />
           Clear
         </button>
       )}
@@ -201,8 +201,8 @@ export default function InboxToolbar({
       {/* View toggle — pinned to the right edge. Hidden on mobile (the
           table view is unusable at narrow widths). */}
       <span className="ml-auto" />
-      <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden />
-      <div className="hidden h-8 rounded-[6px] bg-bg-muted/70 p-0.5 sm:inline-flex">
+      <span className="mx-0.5 hidden h-4 w-px bg-border sm:block" aria-hidden />
+      <div className="hidden h-7 rounded-[5px] bg-bg-muted/70 p-0.5 sm:inline-flex">
         <ViewToggleButton
           icon={LayoutList}
           label="List"
@@ -231,7 +231,7 @@ function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium transition-colors",
+        "inline-flex h-7 items-center gap-1 rounded-[5px] px-2 text-xs font-medium transition-colors",
         active
           ? "bg-text-primary/[0.06] text-text-primary"
           : "text-text-secondary hover:bg-bg-muted hover:text-text-primary",
@@ -253,7 +253,7 @@ function ToolbarToggle({ label, active, onClick }: ToolbarToggleProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium transition-colors",
+        "inline-flex h-7 items-center gap-1 rounded-[5px] px-2 text-xs font-medium transition-colors",
         active
           ? "bg-text-primary/[0.06] text-text-primary"
           : "text-text-secondary hover:bg-bg-muted hover:text-text-primary",

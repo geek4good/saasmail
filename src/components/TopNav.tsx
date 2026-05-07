@@ -59,20 +59,20 @@ export default function TopNav() {
   const isAdmin = session?.user?.role === "admin";
 
   return (
-    <div className="fixed left-0 right-0 top-0 z-50 flex justify-center px-4 pt-3 md:px-6">
+    <div className="fixed left-0 right-0 top-0 z-50 flex justify-center px-4 pt-2 md:px-6">
       <nav
         className={`w-full max-w-[1600px] rounded-[8px] border border-white/[0.08] bg-[#0a0a0a]/90 backdrop-blur-xl transition-shadow duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
           scrolled ? "shadow-2xl shadow-black/40" : ""
         }`}
       >
-        <div className="flex items-center justify-between px-2 py-1.5">
+        <div className="flex items-center justify-between px-2 py-1">
           {/* Brand — Mail glyph in lime; keeps the SAASMAIL wordmark */}
           <Link
             to="/"
-            className="flex items-center gap-2 pl-3 text-xl font-extrabold uppercase tracking-tight text-white transition-opacity duration-150 hover:opacity-80"
+            className="flex items-center gap-1.5 pl-2 text-base font-extrabold uppercase tracking-tight text-white transition-opacity duration-150 hover:opacity-80"
           >
             <Mail
-              className="h-[18px] w-[18px]"
+              className="h-4 w-4"
               strokeWidth={2.5}
               style={{ color: "#BFFF00" }}
               aria-hidden
@@ -81,7 +81,7 @@ export default function TopNav() {
           </Link>
 
           {/* Primary nav (desktop) */}
-          <div className="hidden items-center gap-1 sm:flex">
+          <div className="hidden items-center gap-0.5 sm:flex">
             {PRIMARY_NAV.map((item) => {
               const Icon = item.icon;
               return (
@@ -90,7 +90,7 @@ export default function TopNav() {
                   to={item.path}
                   end={item.end}
                   className={({ isActive }) =>
-                    `flex items-center gap-1.5 rounded-[8px] px-4 py-2 text-sm font-medium transition-colors duration-150 ${
+                    `flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
                       isActive
                         ? "bg-white/[0.12] text-white"
                         : "text-white/60 hover:bg-white/[0.08] hover:text-white"
@@ -105,9 +105,9 @@ export default function TopNav() {
           </div>
 
           {/* Right cluster */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             {isAdmin && (
-              <span className="hidden items-center rounded-[8px] bg-rose-500/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white sm:inline-flex">
+              <span className="hidden items-center rounded-[6px] bg-rose-500/90 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white sm:inline-flex">
                 Admin
               </span>
             )}
@@ -117,12 +117,12 @@ export default function TopNav() {
               <DropdownMenuTrigger asChild>
                 <button
                   title={session?.user?.email}
-                  className="flex items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-medium text-white/80 transition-colors duration-150 hover:bg-white/[0.08] hover:text-white"
+                  className="flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-xs font-medium text-white/80 transition-colors duration-150 hover:bg-white/[0.08] hover:text-white"
                 >
-                  <span className="flex h-6 w-6 items-center justify-center rounded-[8px] bg-white/[0.12]">
-                    <User className="h-3.5 w-3.5 text-white/60" />
+                  <span className="flex h-5 w-5 items-center justify-center rounded-[6px] bg-white/[0.12]">
+                    <User className="h-3 w-3 text-white/60" />
                   </span>
-                  <span className="hidden max-w-[160px] truncate sm:inline">
+                  <span className="hidden max-w-[140px] truncate sm:inline">
                     {session?.user?.name || session?.user?.email}
                   </span>
                 </button>

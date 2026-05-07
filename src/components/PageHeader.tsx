@@ -21,16 +21,16 @@ export default function PageHeader({
   return (
     <div
       className={cn(
-        "mb-6 flex flex-wrap items-end justify-between gap-4 pt-4 sm:mb-8 sm:pt-6",
+        "mb-3 flex items-center justify-between gap-3 pt-3 sm:mb-4 sm:pt-4",
         className,
       )}
     >
-      <div className="min-w-0">
-        <h1 className="text-2xl font-extrabold tracking-tight text-text-primary sm:text-3xl md:text-4xl">
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3">
+        <h1 className="shrink-0 text-xl font-extrabold tracking-tight text-text-primary sm:text-2xl">
           {title}
         </h1>
         {subtitle && (
-          <p className="mt-0.5 max-w-2xl text-xs font-light text-text-secondary sm:mt-1 sm:text-sm">
+          <p className="min-w-0 max-w-2xl truncate text-xs font-light text-text-tertiary sm:text-sm">
             {subtitle}
           </p>
         )}

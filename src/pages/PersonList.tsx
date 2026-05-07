@@ -194,7 +194,7 @@ export default function PersonList({
                     data-testid="person-row"
                     data-person-id={person.id}
                     onClick={() => onSelectPerson(person)}
-                    className="flex w-full items-start gap-3 px-4 py-3.5 text-left active:bg-text-primary/[0.04] sm:py-3"
+                    className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left active:bg-text-primary/[0.04] sm:py-2"
                   >
                     {/* Selection checkbox — appears on hover or when any selected.
                         Clicking it toggles selection without opening the person. */}
@@ -237,7 +237,7 @@ export default function PersonList({
                     {/* Avatar — hidden behind checkbox when hovering in selection mode */}
                     <span
                       className={cn(
-                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold tracking-tight",
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tracking-tight",
                         selectionMode &&
                           (anySelected || isChecked) &&
                           "hidden sm:flex",
@@ -258,20 +258,19 @@ export default function PersonList({
                           )}
                         >
                           {display}
+                          {person.name && (
+                            <span className="ml-1.5 font-light text-text-tertiary">
+                              {person.email}
+                            </span>
+                          )}
                         </span>
                         <span className="shrink-0 text-[11px] font-light text-text-tertiary">
                           {formatTime(person.lastEmailAt)}
                         </span>
                       </div>
 
-                      {person.name && (
-                        <p className="mt-0.5 truncate text-xs font-light text-text-tertiary">
-                          {person.email}
-                        </p>
-                      )}
-
-                      <div className="mt-1.5 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
+                      <div className="mt-0.5 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-[11px] text-text-tertiary">
                           <span>
                             {person.totalCount} email
                             {person.totalCount !== 1 ? "s" : ""}
@@ -284,7 +283,7 @@ export default function PersonList({
                           )}
                           {person.hasAttachment === 1 && (
                             <Paperclip
-                              size={11}
+                              size={10}
                               className="text-text-tertiary"
                               aria-label="Has attachment"
                             />

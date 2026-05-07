@@ -289,15 +289,11 @@ export default function ChatInboxSection({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-subtle/40">
-      {/* Inbox header — sticky at top of section */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card/80 px-6 py-2.5 backdrop-blur-sm">
-        <Inbox size={13} className="text-text-tertiary" />
-        <span className="text-sm font-medium text-text-primary">
+      {/* Inbox header — sticky at top of section. Slim, just the address. */}
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-card/80 px-3 py-1.5 backdrop-blur-sm">
+        <Inbox size={11} className="text-text-tertiary" />
+        <span className="text-xs font-medium text-text-secondary">
           {group.inbox}
-        </span>
-        <span className="text-xs text-text-tertiary">
-          · {group.emails.length} message
-          {group.emails.length !== 1 ? "s" : ""} · chat
         </span>
       </div>
 

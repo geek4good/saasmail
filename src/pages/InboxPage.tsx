@@ -257,19 +257,19 @@ export default function InboxPage() {
           On mobile we hide the header entirely when a person is open so
           the conversation gets full-screen real estate. */}
       <div
-        className={`mb-3 items-end justify-between gap-4 pt-4 sm:mb-4 sm:pt-6 ${selectedPerson ? "hidden sm:flex" : "flex"}`}
+        className={`mb-2 items-center justify-between gap-3 pt-3 sm:mb-3 sm:pt-4 ${selectedPerson ? "hidden sm:flex" : "flex"}`}
       >
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-text-primary sm:text-3xl md:text-4xl">
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h1 className="text-xl font-extrabold tracking-tight text-text-primary sm:text-2xl">
             Inbox
           </h1>
-          <p className="mt-0.5 text-xs font-light text-text-secondary sm:mt-1 sm:text-sm">
+          <p className="text-xs font-light text-text-tertiary sm:text-sm">
             One unified timeline per customer.
           </p>
         </div>
         <button
           onClick={onCompose}
-          className="hidden shrink-0 items-center gap-2 rounded-[8px] bg-text-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 sm:inline-flex"
+          className="hidden shrink-0 items-center gap-1.5 rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 sm:inline-flex"
         >
           <PenSquare className="h-3.5 w-3.5" />
           Compose
@@ -280,7 +280,7 @@ export default function InboxPage() {
           Hidden when a person is open in table view to keep the focus on
           the conversation. (Toggle stays accessible via the back button.) */}
       {!(view === "table" && selectedPerson) && (
-        <div className={`mb-3 ${selectedPerson ? "hidden sm:block" : ""}`}>
+        <div className={`mb-2 ${selectedPerson ? "hidden sm:block" : ""}`}>
           <InboxToolbar
             filters={filters}
             onFiltersChange={setFilters}
@@ -326,8 +326,8 @@ export default function InboxPage() {
       <div
         className={`-mx-4 flex flex-col overflow-hidden rounded-none bg-card shadow-sm ring-0 sm:mx-0 sm:rounded-[8px] sm:ring-1 sm:ring-border ${
           selectedPerson
-            ? "h-[calc(100vh-7rem)] min-h-[420px] sm:h-[calc(100vh-19rem)] sm:min-h-[520px]"
-            : "h-[calc(100vh-19rem)] min-h-[480px] sm:h-[calc(100vh-19rem)] sm:min-h-[520px]"
+            ? "h-[calc(100vh-6rem)] min-h-[420px] sm:h-[calc(100vh-13rem)] sm:min-h-[520px]"
+            : "h-[calc(100vh-14rem)] min-h-[480px] sm:h-[calc(100vh-14rem)] sm:min-h-[520px]"
         }`}
       >
         {view === "table" ? (
