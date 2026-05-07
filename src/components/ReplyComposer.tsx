@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { X } from "lucide-react";
+import { X, Paperclip } from "lucide-react";
 import TiptapEditor from "@/components/TiptapEditor";
 import { replyToEmail, fetchTemplates, type EmailTemplate } from "@/lib/api";
 import { getFromLabel } from "@/lib/format";
+import { useAttachments } from "@/hooks/useAttachments";
 
 interface ReplyComposerProps {
   emailId: string;
@@ -40,6 +41,12 @@ export default function ReplyComposer({
   const [tab, setTab] = useState<Tab>("freeform");
   const [fromAddress, setFromAddress] = useState(recipients[0] ?? "");
   const [bodyHtml, setBodyHtml] = useState("");
+  const {
+    attachments,
+    error: attachmentError,
+    handleFileChange,
+    removeAttachment,
+  } = useAttachments();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
@@ -93,7 +100,7 @@ export default function ReplyComposer({
     setError("");
     try {
       if (tab === "freeform") {
-        await replyToEmail(emailId, { bodyHtml, fromAddress });
+        await replyToEmail(emailId, { bodyHtml, fromAddress, attachments });
       } else {
         if (!selectedSlug) {
           setError("Select a template");
@@ -174,11 +181,41 @@ export default function ReplyComposer({
 
         {/* Content area */}
         {tab === "freeform" ? (
-          <TiptapEditor
-            content={bodyHtml}
-            onUpdate={setBodyHtml}
-            placeholder="Write your reply..."
-          />
+          <>
+            <TiptapEditor
+              content={bodyHtml}
+              onUpdate={setBodyHtml}
+              placeholder="Write your reply..."
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="cursor-pointer flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors">
+                <Paperclip className="h-3.5 w-3.5" />
+                Attach
+                <input
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  onChange={handleFileChange}
+                />
+              </label>
+              {attachments.map((f, i) => (
+                <span
+                  key={`${f.name}-${f.size}-${i}`}
+                  className="flex items-center gap-1 rounded bg-bg-muted px-2 py-0.5 text-xs text-text-primary"
+                >
+                  {f.name}
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    className="text-text-tertiary hover:text-text-primary transition-colors"
+                    aria-label={`Remove ${f.name}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="space-y-2">
             {templatesLoading ? (
@@ -250,7 +287,11 @@ export default function ReplyComposer({
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-1">
-          {error && <span className="text-xs text-destructive">{error}</span>}
+          {(error || attachmentError) && (
+            <span className="text-xs text-destructive">
+              {error || attachmentError}
+            </span>
+          )}
           <div className="ml-auto">
             <button
               onClick={handleSend}

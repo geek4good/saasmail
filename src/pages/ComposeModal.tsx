@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Paperclip } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +9,7 @@ import {
 import TiptapEditor from "@/components/TiptapEditor";
 import { sendEmail, fetchStats } from "@/lib/api";
 import { getFromLabel } from "@/lib/format";
+import { useAttachments } from "@/hooks/useAttachments";
 
 interface ComposeModalProps {
   open: boolean;
@@ -23,6 +25,13 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
   >([]);
   const [subject, setSubject] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  const {
+    attachments,
+    error: attachmentError,
+    handleFileChange,
+    removeAttachment,
+    resetAttachments,
+  } = useAttachments();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
@@ -42,6 +51,7 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
       setTo("");
       setSubject("");
       setBodyHtml("");
+      resetAttachments();
       setError("");
     }
   }, [open]);
@@ -51,7 +61,7 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
     setSending(true);
     setError("");
     try {
-      await sendEmail({ to, fromAddress, subject, bodyHtml });
+      await sendEmail({ to, fromAddress, subject, bodyHtml, attachments });
       onClose();
     } catch {
       setError("Failed to send email");
@@ -123,7 +133,37 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
               <TiptapEditor content={bodyHtml} onUpdate={setBodyHtml} />
             </div>
           </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="cursor-pointer flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors">
+              <Paperclip className="h-3.5 w-3.5" />
+              Attach
+              <input
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={handleFileChange}
+              />
+            </label>
+            {attachments.map((f, i) => (
+              <span
+                key={`${f.name}-${f.size}-${i}`}
+                className="flex items-center gap-1 rounded bg-bg-muted px-2 py-0.5 text-xs text-text-primary"
+              >
+                {f.name}
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(i)}
+                  className="text-text-tertiary hover:text-text-primary transition-colors"
+                  aria-label={`Remove ${f.name}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          {(error || attachmentError) && (
+            <p className="text-xs text-destructive">{error || attachmentError}</p>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"

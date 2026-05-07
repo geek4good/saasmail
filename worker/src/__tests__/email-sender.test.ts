@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { createEmailSender } from "../lib/email-sender";
+import type { EmailAttachment } from "../lib/email-sender";
+
+const testAttachment: EmailAttachment = {
+  filename: "test.txt",
+  contentType: "text/plain",
+  data: new TextEncoder().encode("hello"),
+};
 
 describe("createEmailSender", () => {
   it("picks Resend when RESEND_API_KEY is set", () => {
@@ -93,5 +100,49 @@ describe("CloudflareSender", () => {
 
     expect(result.id).toBeNull();
     expect(result.error?.message).toBe("sender not allowed");
+  });
+
+  it("includes attachment as base64 in the raw MIME body", async () => {
+    const fakeBinding = {
+      send: vi.fn().mockResolvedValue({ messageId: "msg-att" }),
+    };
+    const sender = createEmailSender({
+      EMAIL: fakeBinding,
+    } as unknown as CloudflareBindings);
+
+    await sender.send({
+      from: "a@b.com",
+      to: "c@d.com",
+      subject: "with attachment",
+      html: "<p>hi</p>",
+      attachments: [testAttachment],
+    });
+
+    expect(fakeBinding.send).toHaveBeenCalledTimes(1);
+    const serialized = JSON.stringify(fakeBinding.send.mock.calls[0][0]);
+    expect(serialized).toContain("Content-Disposition");
+    expect(serialized).toContain("test.txt");
+    // base64 of "hello" is "aGVsbG8="
+    expect(serialized).toContain("aGVsbG8=");
+  });
+
+  it("sends without attachment when none provided (regression)", async () => {
+    const fakeBinding = {
+      send: vi.fn().mockResolvedValue({ messageId: "msg-no-att" }),
+    };
+    const sender = createEmailSender({
+      EMAIL: fakeBinding,
+    } as unknown as CloudflareBindings);
+
+    const result = await sender.send({
+      from: "a@b.com",
+      to: "c@d.com",
+      subject: "no attachment",
+      html: "<p>hi</p>",
+    });
+
+    expect(result.error).toBeNull();
+    const serialized = JSON.stringify(fakeBinding.send.mock.calls[0][0]);
+    expect(serialized).not.toContain("Content-Disposition: attachment");
   });
 });

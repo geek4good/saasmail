@@ -166,12 +166,17 @@ export async function sendEmail(data: {
   subject: string;
   bodyHtml: string;
   bodyText?: string;
+  attachments?: File[];
 }): Promise<{ id: string }> {
-  return apiFetch("/api/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+  const fd = new FormData();
+  fd.append("to", data.to);
+  fd.append("fromAddress", data.fromAddress);
+  fd.append("subject", data.subject);
+  fd.append("bodyHtml", data.bodyHtml);
+  if (data.bodyText) fd.append("bodyText", data.bodyText);
+  for (const file of data.attachments ?? []) fd.append("attachments", file);
+  // Do NOT set Content-Type — browser sets multipart/form-data with correct boundary.
+  return apiFetch("/api/send", { method: "POST", body: fd });
 }
 
 export async function replyToEmail(
@@ -182,13 +187,17 @@ export async function replyToEmail(
     fromAddress: string;
     templateSlug?: string;
     variables?: Record<string, string>;
+    attachments?: File[];
   },
 ): Promise<{ id: string }> {
-  return apiFetch(`/api/send/reply/${emailId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+  const fd = new FormData();
+  fd.append("fromAddress", data.fromAddress);
+  if (data.bodyHtml) fd.append("bodyHtml", data.bodyHtml);
+  if (data.bodyText) fd.append("bodyText", data.bodyText);
+  if (data.templateSlug) fd.append("templateSlug", data.templateSlug);
+  if (data.variables) fd.append("variables", JSON.stringify(data.variables));
+  for (const file of data.attachments ?? []) fd.append("attachments", file);
+  return apiFetch(`/api/send/reply/${emailId}`, { method: "POST", body: fd });
 }
 
 export async function fetchStats(recipient?: string): Promise<Stats> {
