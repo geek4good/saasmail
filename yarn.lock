@@ -1132,6 +1132,18 @@
   resolved "https://registry.npmjs.org/@opentelemetry/semantic-conventions/-/semantic-conventions-1.40.0.tgz"
   integrity sha512-cifvXDhcqMwwTlTK04GBNeIe7yyo28Mfby85QXFe1Yk8nmi36Ab/5UQwptOx84SsoGNRg+EVSjwzfSZMy6pmlw==
 
+"@paper-design/shaders-react@^0.0.76":
+  version "0.0.76"
+  resolved "https://registry.yarnpkg.com/@paper-design/shaders-react/-/shaders-react-0.0.76.tgz#c574c2e75b8e7b40a1c50d2e919cd10f16be469a"
+  integrity sha512-uPJWrYRf6cJdO2H+fuXlahaqz0QjYglNAyUTaRfIInpzCa/d6guxBIK003soAZQFuQ035yg9FhtfFzKNWm+a5A==
+  dependencies:
+    "@paper-design/shaders" "0.0.76"
+
+"@paper-design/shaders@0.0.76":
+  version "0.0.76"
+  resolved "https://registry.yarnpkg.com/@paper-design/shaders/-/shaders-0.0.76.tgz#85788f66ac94067af284d3ba4ccb33f8df6b531c"
+  integrity sha512-AcNDY4J66YQHUfQYFInkCP7M9VOje0od7wLpOR7LtCmc532opJy6ll+h1W9zBovz8tt9U7OADUmJ/qKEXyOX/A==
+
 "@peculiar/asn1-android@^2.6.0":
   version "2.6.0"
   resolved "https://registry.npmjs.org/@peculiar/asn1-android/-/asn1-android-2.6.0.tgz"
