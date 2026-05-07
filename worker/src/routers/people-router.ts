@@ -12,7 +12,13 @@ function peopleScopeClause(allowed: AllowedInboxes) {
   if (allowed.isAdmin) return sql``;
   if (allowed.inboxes.length === 0)
     return sql`AND s.id IN (SELECT NULL WHERE 0)`;
-  return sql`AND s.id IN (SELECT person_id FROM emails WHERE recipient IN ${allowed.inboxes})`;
+  // A person is in scope if they emailed one of our allowed inboxes OR if we
+  // sent them mail from one of our allowed inboxes.
+  return sql`AND s.id IN (
+    SELECT person_id FROM emails WHERE recipient IN ${allowed.inboxes}
+    UNION
+    SELECT person_id FROM sent_emails WHERE from_address IN ${allowed.inboxes} AND person_id IS NOT NULL
+  )`;
 }
 
 export const peopleRouter = new OpenAPIHono<{
@@ -103,6 +109,20 @@ peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
       : sql``;
   const whereClause = sql`WHERE 1=1 ${extraConditions} ${scopeClause}`;
 
+  // Aggregate over both received and sent emails so people we've composed to
+  // appear in the list, not just senders who have emailed us. Sent rows
+  // contribute to totalCount / lastEmailAt / recipientCount but never to
+  // unreadCount (we read everything we send). Attachments are still computed
+  // against received emails since sent emails don't have an attachments link.
+  const activity = sql`(
+    SELECT person_id, recipient AS inbox, received_at AS at, is_read
+    FROM ${emails}
+    UNION ALL
+    SELECT person_id, from_address AS inbox, sent_at AS at, 1 AS is_read
+    FROM ${sentEmails}
+    WHERE person_id IS NOT NULL
+  )`;
+
   const rows = await db.all<{
     id: string;
     email: string;
@@ -117,17 +137,17 @@ peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
       s.id,
       s.email,
       s.name,
-      MAX(e.received_at) AS lastEmailAt,
+      MAX(e.at) AS lastEmailAt,
       SUM(CASE WHEN e.is_read = 0 THEN 1 ELSE 0 END) AS unreadCount,
       COUNT(*) AS totalCount,
-      COUNT(DISTINCT e.recipient) AS recipientCount,
+      COUNT(DISTINCT e.inbox) AS recipientCount,
       EXISTS(
         SELECT 1 FROM ${attachments} a
         JOIN ${emails} e2 ON e2.id = a.email_id
         WHERE e2.person_id = s.id
         AND a.content_id IS NULL
       ) AS hasAttachment
-    FROM ${emails} e
+    FROM ${activity} e
     JOIN ${people} s ON s.id = e.person_id
     ${whereClause}
     GROUP BY s.id
@@ -137,7 +157,7 @@ peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
 
   const countResult = await db.all<{ count: number }>(sql`
     SELECT COUNT(*) AS count FROM (
-      SELECT 1 FROM ${emails} e
+      SELECT 1 FROM ${activity} e
       JOIN ${people} s ON s.id = e.person_id
       ${whereClause}
       GROUP BY s.id

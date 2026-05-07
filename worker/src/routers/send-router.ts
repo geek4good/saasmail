@@ -72,14 +72,41 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
     headers: { "Message-ID": messageId },
   });
 
-  // Find person if they exist
+  // Find or create the person row for this recipient. Composing to a brand-new
+  // address must register them as a correspondent so they show up in the
+  // people list (which is keyed on people.id).
   const existingPerson = await db
     .select({ id: people.id })
     .from(people)
     .where(eq(people.email, to))
     .limit(1);
 
-  const personId = existingPerson[0]?.id ?? null;
+  let personId: string;
+  if (existingPerson[0]) {
+    personId = existingPerson[0].id;
+  } else {
+    personId = nanoid();
+    await db
+      .insert(people)
+      .values({
+        id: personId,
+        email: to,
+        name: null,
+        lastEmailAt: now,
+        unreadCount: 0,
+        totalCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({ target: people.email });
+    // Re-read in case of a race with another insert.
+    const refetched = await db
+      .select({ id: people.id })
+      .from(people)
+      .where(eq(people.email, to))
+      .limit(1);
+    personId = refetched[0]!.id;
+  }
 
   // Store sent email
   const id = nanoid();
@@ -99,9 +126,7 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
   });
 
   // Cancel any active sequences for this recipient
-  if (personId) {
-    await cancelSequencesForPerson(db, personId);
-  }
+  await cancelSequencesForPerson(db, personId);
 
   return c.json(
     {
