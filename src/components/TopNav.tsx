@@ -179,6 +179,15 @@ export default function TopNav() {
                     Admin tools
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-testid="logout-button"
+                  onClick={() => signOut()}
+                  className="cursor-pointer text-red-500 focus:bg-red-500/10 focus:text-red-500"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
