@@ -22,6 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import PageHeader, { PageContainer } from "@/components/PageHeader";
 
 export default function AdminUsersPage() {
   const { data: session } = useSession();
@@ -102,11 +103,116 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="rounded-lg border border-border bg-white ring-1 ring-gray-200">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="text-xs font-semibold text-text-primary">Users</h2>
+    <PageContainer>
+      <PageHeader
+        title="Users"
+        subtitle="Invite teammates, manage roles, and track passkey adoption."
+        action={
+          <Dialog
+            open={inviteDialogOpen}
+            onOpenChange={(open) => {
+              setInviteDialogOpen(open);
+              if (!open) {
+                setGeneratedLink("");
+                setInviteEmail("");
+                setInviteRole("member");
+                setInviteExpiry("7");
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <button className="inline-flex items-center gap-1.5 rounded-[8px] bg-text-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90">
+                Invite user
+              </button>
+            </DialogTrigger>
+            <DialogContent className="border-border bg-card ring-1 ring-border text-text-primary">
+              <DialogHeader>
+                <DialogTitle className="text-text-primary">
+                  Create invitation
+                </DialogTitle>
+              </DialogHeader>
+              {!generatedLink ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-text-secondary">
+                      Role
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setInviteRole("member")}
+                        className={`rounded-[6px] px-3 py-1.5 text-xs ${inviteRole === "member" ? "bg-text-primary text-white" : "border border-border text-text-secondary hover:bg-bg-muted"}`}
+                      >
+                        Member
+                      </button>
+                      <button
+                        onClick={() => setInviteRole("admin")}
+                        className={`rounded-[6px] px-3 py-1.5 text-xs ${inviteRole === "admin" ? "bg-text-primary text-white" : "border border-border text-text-secondary hover:bg-bg-muted"}`}
+                      >
+                        Admin
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-text-secondary">
+                      Email (optional)
+                    </label>
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="user@example.com"
+                      className="h-9 w-full rounded-[6px] border border-border bg-card px-3 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-text-primary/15"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-text-secondary">
+                      Expires in (days)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={inviteExpiry}
+                      onChange={(e) => setInviteExpiry(e.target.value)}
+                      className="h-9 w-full rounded-[6px] border border-border bg-card px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-text-primary/15"
+                    />
+                  </div>
+                  <button
+                    onClick={handleCreateInvite}
+                    disabled={inviteLoading}
+                    className="w-full rounded-[8px] bg-text-primary py-2 text-sm font-medium text-white hover:bg-text-primary/90 disabled:opacity-50"
+                  >
+                    {inviteLoading ? "Creating…" : "Create invite"}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-text-secondary">
+                    Share this link with the user:
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      value={generatedLink}
+                      readOnly
+                      className="h-9 flex-1 rounded-[6px] border border-border bg-card px-3 text-xs text-text-primary focus:outline-none"
+                    />
+                    <button
+                      onClick={handleCopy}
+                      className="rounded-[6px] border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-muted hover:text-text-primary"
+                    >
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <div className="max-w-4xl space-y-6">
+        <div className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
+          <div className="hidden">
             <Dialog
               open={inviteDialogOpen}
               onOpenChange={(open) => {
@@ -215,6 +321,11 @@ export default function AdminUsersPage() {
               </DialogContent>
             </Dialog>
           </div>
+          <div className="border-b border-border px-5 py-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              Members
+            </h2>
+          </div>
           <div>
             {loading ? (
               <p className="p-4 text-xs text-text-tertiary">Loading...</p>
@@ -292,9 +403,9 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-border bg-white ring-1 ring-gray-200">
-          <div className="border-b border-border px-4 py-3">
-            <h2 className="text-xs font-semibold text-text-primary">
+        <div className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
+          <div className="border-b border-border px-5 py-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
               Invitations
             </h2>
           </div>
@@ -338,6 +449,6 @@ export default function AdminUsersPage() {
           </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

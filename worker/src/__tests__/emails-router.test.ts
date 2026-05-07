@@ -174,11 +174,12 @@ describe("emails router", () => {
         createdAt: now + 10,
       });
 
-      // Set support@ to chat mode; sales@ has no row → defaults to thread.
+      // Set support@ to thread mode (override the new default); sales@ has
+      // no row so it falls back to the default ("chat").
       await db.insert(senderIdentities).values({
         email: "support@saasmail.test",
         displayName: null,
-        displayMode: "chat",
+        displayMode: "thread",
         createdAt: now,
         updatedAt: now,
       });
@@ -194,8 +195,8 @@ describe("emails router", () => {
         }>;
       };
       const byEmail = Object.fromEntries(body.inboxes.map((i) => [i.email, i]));
-      expect(byEmail["support@saasmail.test"]?.displayMode).toBe("chat");
-      expect(byEmail["sales@saasmail.test"]?.displayMode).toBe("thread");
+      expect(byEmail["support@saasmail.test"]?.displayMode).toBe("thread");
+      expect(byEmail["sales@saasmail.test"]?.displayMode).toBe("chat");
     });
   });
 

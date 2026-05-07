@@ -96,6 +96,12 @@ test.describe.serial("compose & send", () => {
     await expect(page.getByText("Alice Anderson")).toBeVisible();
     await page.getByText("Alice Anderson").click();
 
+    // Switch to the marketing@ tab (thread mode) so thread-message bubbles
+    // are rendered (the redesign tabs each inbox per person).
+    await page
+      .locator(`[data-testid="inbox-tab"]`, { hasText: "marketing" })
+      .click();
+
     // Wait for her emails to load in the right panel
     // The latest marketing@ email is e_m_a2 "Re: Welcome to our product"
     // MessageBubble renders with a Reply button hidden behind group-hover

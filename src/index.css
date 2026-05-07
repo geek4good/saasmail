@@ -1,56 +1,309 @@
 @import "tailwindcss";
 
 @theme {
+  /* ──────────────────────────────────────────────────────────────
+     Brand palette — matches givefeedback.dev
+     Lime primary + violet accent on near-white surfaces.
+     ──────────────────────────────────────────────────────────── */
+
   /* Surfaces */
-  --color-bg: #ffffff;
-  --color-bg-subtle: #f9fafb;
-  --color-bg-muted: #f3f4f6;
+  --color-background: hsl(0 0% 99%);
+  --color-bg: hsl(0 0% 99%);
+  --color-bg-subtle: hsl(220 14% 96%);
+  --color-bg-muted: hsl(220 13% 91%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222 47% 11%);
 
   /* Borders */
-  --color-border: #e5e7eb;
-  --color-border-subtle: #f1f5f9;
+  --color-border: hsl(220 13% 91%);
+  --color-border-subtle: hsl(220 14% 96%);
+  --color-input: hsl(220 13% 91%);
 
   /* Text */
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-tertiary: #94a3b8;
+  --color-foreground: hsl(222 47% 11%);
+  --color-text-primary: hsl(222 47% 11%);
+  --color-text-secondary: hsl(215 16% 47%);
+  --color-text-tertiary: hsl(215 16% 65%);
+  --color-muted-foreground: hsl(215 16% 47%);
 
-  /* Accent (blue-600 system) */
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-accent-subtle: #eff6ff;
-  --color-accent-subtle-fg: #1d4ed8;
+  /* Primary (lime) — used for CTAs */
+  --color-primary: hsl(75 100% 32%);
+  --color-primary-foreground: hsl(0 0% 100%);
+
+  /* Saasmail's existing 'accent' name aliases the primary lime
+     so existing components (bg-accent, text-accent) inherit the
+     new brand color without rewriting every call site. */
+  --color-accent: hsl(75 100% 32%);
+  --color-accent-hover: hsl(75 100% 26%);
+  --color-accent-subtle: hsl(75 70% 94%);
+  --color-accent-subtle-fg: hsl(75 100% 22%);
+  --color-accent-foreground: hsl(0 0% 100%);
+
+  /* Brand pure-tones (used for the ✦ sparkle and footer brand line) */
+  --color-lime: #bfff00;
+  --color-violet: #7c5cfc;
+
+  /* Violet accent — focus rings, highlights, unread indicators */
+  --color-ring: hsl(254 95% 55%);
+  --color-unread: hsl(254 95% 55%);
 
   /* Semantic */
-  --color-destructive: #dc2626;
-  --color-destructive-subtle: #fee2e2;
-  --color-success: #16a34a;
-  --color-warning-bg: #fffbeb;
-  --color-warning-border: #fde68a;
-  --color-warning-text: #b45309;
+  --color-secondary: hsl(220 14% 96%);
+  --color-secondary-foreground: hsl(222 47% 11%);
+  --color-muted: hsl(220 14% 96%);
+  --color-destructive: hsl(0 72% 51%);
+  --color-destructive-subtle: hsl(0 72% 95%);
+  --color-success: hsl(142 60% 38%);
+  --color-warning-bg: hsl(48 100% 96%);
+  --color-warning-border: hsl(48 96% 76%);
+  --color-warning-text: hsl(35 91% 33%);
 
-  /* Back-compat aliases for shadcn primitives (same value as primary tokens) */
-  --color-unread: #2563eb;
+  /* Fonts */
+  --font-sans:
+    "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
+  --font-script: "Caveat", cursive;
 
   /* Radii */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
 }
 
 html {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 body {
-  background-color: #ffffff;
-  color: #0f172a;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Helvetica, Arial,
-    sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
   font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Brand utilities ─────────────────────────────────────────── */
+
+.font-script {
+  font-family: var(--font-script);
+}
+
+/* Subtle animated grain backdrop for public/auth surfaces */
+.brand-backdrop {
+  background-color: #0a0a0a;
+  background-image:
+    radial-gradient(
+      ellipse 80% 60% at 20% 10%,
+      rgba(124, 92, 252, 0.35),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 70% 50% at 80% 20%,
+      rgba(191, 255, 0, 0.12),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 60% 60% at 50% 100%,
+      rgba(99, 102, 241, 0.25),
+      transparent 70%
+    );
+}
+
+/* Animated faded-out backdrop for the dashboard.
+   Matches givefeedback.dev's app — soft lavender + lime + indigo bloom
+   that gently drifts. CSS-only, no shader runtime, no extra deps. */
+.dashboard-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-color: #f8f8f8;
+  background-image:
+    radial-gradient(
+      ellipse 50% 40% at 8% 12%,
+      rgba(196, 181, 253, 0.55),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 45% 35% at 92% 8%,
+      rgba(163, 230, 53, 0.35),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 55% 40% at 100% 65%,
+      rgba(129, 140, 248, 0.4),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 60% 45% at 35% 90%,
+      rgba(233, 213, 255, 0.55),
+      transparent 65%
+    );
+  background-size:
+    140% 140%,
+    140% 140%,
+    140% 140%,
+    140% 140%;
+  background-position:
+    0% 0%,
+    100% 0%,
+    100% 50%,
+    0% 100%;
+  animation: backdrop-drift 28s ease-in-out infinite alternate;
+  filter: blur(40px) saturate(1.05);
+  z-index: 0;
+}
+
+.dashboard-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* Static variant — same gradient, no drift / no expensive blur / no
+   noise overlay. Used by useReducedAnimations() on low-spec devices. */
+.dashboard-backdrop-static {
+  animation: none !important;
+  filter: blur(24px) saturate(1) !important;
+}
+.dashboard-backdrop-static::after {
+  display: none !important;
+}
+
+/* Honor the user's reduced-motion preference globally — kills CSS
+   animations + transitions, drops scroll smoothing, neutralizes the
+   dashboard-backdrop drift and noise overlay. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.05ms !important;
+    scroll-behavior: auto !important;
+  }
+  .dashboard-backdrop {
+    animation: none !important;
+    filter: blur(24px) saturate(1) !important;
+  }
+  .dashboard-backdrop::after {
+    display: none !important;
+  }
+}
+
+/* Fade the backdrop from full strength at top to plain background at bottom,
+   so content lower on the page reads on a clean white surface. Stops at
+   ~60vh so the footer area remains transparent (not painted over). */
+.dashboard-backdrop-mask {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(248, 248, 248, 0.35) 35%,
+    rgba(248, 248, 248, 0.7) 60%,
+    rgba(248, 248, 248, 0.7) 100%
+  );
+}
+
+/* Slide-in / slide-out keyframes for the right-side drawer.
+   Pure CSS so we don't depend on tailwindcss-animate's exact set. */
+@keyframes drawer-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes drawer-slide-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes drawer-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes drawer-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.drawer-content[data-state="open"] {
+  animation: drawer-slide-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.drawer-content[data-state="closed"] {
+  animation: drawer-slide-out 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.drawer-overlay[data-state="open"] {
+  animation: drawer-overlay-in 200ms ease-out;
+}
+.drawer-overlay[data-state="closed"] {
+  animation: drawer-overlay-out 160ms ease-in;
+}
+
+/* Smooth, refined scrollbars on overflow containers.
+   Webkit + Firefox styling. Used by the inbox panes for independent,
+   non-jarring scroll. */
+.smooth-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.18) transparent;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+.smooth-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.smooth-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.smooth-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 23, 42, 0.14);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 200ms ease;
+}
+.smooth-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 23, 42, 0.28);
+}
+
+@keyframes backdrop-drift {
+  0% {
+    background-position:
+      0% 0%,
+      100% 0%,
+      100% 50%,
+      0% 100%;
+  }
+  100% {
+    background-position:
+      20% 15%,
+      80% 20%,
+      85% 65%,
+      15% 85%;
+  }
 }
 
 /* ── Rich Text Editor Styles ── */

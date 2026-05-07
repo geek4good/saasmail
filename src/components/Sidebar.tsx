@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { signOut, useSession } from "@/lib/auth-client";
 import { useSidebarCollapsed } from "@/lib/useSidebarCollapsed";
+import { Wordmark } from "@/components/Wordmark";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -104,19 +105,18 @@ export default function Sidebar({ onCompose }: SidebarProps) {
     >
       {/* Header */}
       <div
-        className={`flex items-center ${collapsed ? "justify-center px-0" : "px-3"} py-3`}
+        className={`flex items-center ${collapsed ? "justify-center px-0" : "px-3"} py-4`}
       >
         {collapsed ? (
-          // Collapsed: crop the logo to show just the icon portion on the left.
-          <div className="h-8 w-8 shrink-0 overflow-hidden">
-            <img
-              src="/saasmail-logo.png"
-              alt="saasmail"
-              className="h-8 w-auto max-w-none object-left"
-            />
-          </div>
+          <span
+            className="text-2xl leading-none text-violet"
+            style={{ color: "#7c5cfc" }}
+            aria-label="saasmail"
+          >
+            ✦
+          </span>
         ) : (
-          <img src="/saasmail-logo.png" alt="saasmail" className="h-7 w-auto" />
+          <Wordmark className="text-text-primary" />
         )}
       </div>
 

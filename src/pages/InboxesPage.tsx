@@ -1,6 +1,7 @@
 import { useSession } from "@/lib/auth-client";
 import { Navigate } from "react-router-dom";
 import AdminInboxTable from "@/components/AdminInboxTable";
+import PageHeader, { PageContainer } from "@/components/PageHeader";
 
 export default function InboxesPage() {
   const { data: session } = useSession();
@@ -8,12 +9,12 @@ export default function InboxesPage() {
     return <Navigate to="/" replace />;
   }
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-lg font-semibold text-text-primary mb-2">Inboxes</h1>
-      <p className="mb-6 text-sm text-text-secondary">
-        Set display names and control which members can access each inbox.
-      </p>
+    <PageContainer>
+      <PageHeader
+        title="Inboxes"
+        subtitle="Set display names, choose chat or thread mode, and assign which members can access each inbox."
+      />
       <AdminInboxTable />
-    </div>
+    </PageContainer>
   );
 }

@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus, FileText, Pencil, Trash2 } from "lucide-react";
 import { fetchTemplates, deleteTemplate } from "@/lib/api";
 import type { EmailTemplate } from "@/lib/api";
+import PageHeader, { PageContainer } from "@/components/PageHeader";
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -21,61 +23,86 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-sm font-semibold text-text-primary">
-            Email Templates
-          </h1>
+    <PageContainer>
+      <PageHeader
+        title="Email Templates"
+        subtitle="Reusable HTML email templates with {{variable}} interpolation. Send via the UI or API."
+        action={
           <button
             onClick={() => navigate("/templates/new")}
-            className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+            className="inline-flex items-center gap-1.5 rounded-[8px] bg-text-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90"
           >
-            New Template
+            <Plus size={14} />
+            New template
           </button>
-        </div>
+        }
+      />
 
+      <div className="max-w-4xl">
         {loading ? (
-          <p className="text-xs text-text-tertiary">Loading...</p>
+          <p className="text-sm font-light text-text-tertiary">Loading…</p>
         ) : templates.length === 0 ? (
-          <p className="text-xs text-text-tertiary">No templates yet.</p>
+          <div className="rounded-[8px] bg-card p-10 text-center ring-1 ring-border">
+            <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet/10">
+              <FileText size={20} style={{ color: "#7c5cfc" }} />
+            </span>
+            <p className="mb-1 text-sm font-medium text-text-primary">
+              No templates yet
+            </p>
+            <p className="text-xs font-light text-text-tertiary">
+              Use the "New template" button above to create your first one.
+            </p>
+          </div>
         ) : (
-          <div className="space-y-1">
-            {templates.map((t) => (
-              <div
-                key={t.id}
-                data-testid="template-row"
-                data-template-name={t.name}
-                data-template-slug={t.slug}
-                className="flex items-center justify-between rounded-lg border border-border bg-white ring-1 ring-gray-200 px-4 py-3"
-              >
-                <div>
-                  <p className="text-xs font-medium text-text-primary">
-                    {t.name}
-                  </p>
-                  <p className="text-[11px] text-text-tertiary">
-                    {t.slug} &middot; {t.subject}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => navigate(`/templates/${t.slug}/edit`)}
-                    className="rounded-md px-2.5 py-1 text-[11px] text-text-secondary hover:bg-bg-muted hover:text-text-primary"
+          <div className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
+            <ul className="divide-y divide-border/60">
+              {templates.map((t) => (
+                <li
+                  key={t.id}
+                  data-testid="template-row"
+                  data-template-name={t.name}
+                  data-template-slug={t.slug}
+                  className="group flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-text-primary/[0.02]"
+                >
+                  <Link
+                    to={`/templates/${t.slug}/edit`}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(t.slug)}
-                    className="rounded-md px-2.5 py-1 text-[11px] text-destructive hover:bg-bg-muted"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-bg-muted">
+                      <FileText size={14} className="text-text-tertiary" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-text-primary">
+                        {t.name}
+                      </p>
+                      <p className="truncate text-xs font-light text-text-tertiary">
+                        <span className="font-mono">{t.slug}</span> ·{" "}
+                        {t.subject}
+                      </p>
+                    </div>
+                  </Link>
+                  <div className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+                    <button
+                      onClick={() => navigate(`/templates/${t.slug}/edit`)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                    >
+                      <Pencil size={12} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(t.slug)}
+                      aria-label="Delete"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

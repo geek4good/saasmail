@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-07
+
+A large UX/visual overhaul plus a new bulk-actions API. Frontend, brand,
+and admin tooling all changed; the data model is unchanged.
+
+### Added
+
+- **Brand refresh**: lime + violet palette via Tailwind v4 `@theme` tokens, Inter + Caveat fonts, animated GrainGradient backdrop on auth screens, soft pastel backdrop on the dashboard, mail-glyph favicon, OpenGraph image, comprehensive SEO meta + JSON-LD `SoftwareApplication`.
+- **Top-nav layout**: floating dark pill nav with brand wordmark, route tabs, breadcrumbs strip, and a unified `Footer` (light variant for dashboard, dark variant for auth) — replaces the persistent left sidebar.
+- **Inbox table view + filter toolbar**: new default view shows people as a sortable table with stats strip (people / unread / multi-inbox / with attachments). Single unified toolbar combines search, inbox dropdown, unread/attachments chips, and a List ↔ Table view toggle.
+- **Bulk actions**: select multiple people via per-row checkboxes; floating `SelectionBar` exposes "Mark as read" with optimistic UI. Click an unread badge to mark just that person's emails as read. Per-inbox "Mark all in `<inbox>` as read" button on the active tab in `PersonDetail`.
+- **Per-person tabbed inbox view**: when a contact has emailed multiple inboxes, each inbox is its own tab (short label, count, unread badge, mode dot) instead of stacked sections.
+- **Drawer pattern for "View original" and "Reply"**: right-side animated slide-in (320 ms eased) with rich detail, From/To/ID/Time metadata, attachments with sizes, Rendered/Plain text toggle, copy-text. Reply drawer renders the email being replied to plus the surrounding thread alongside the editor (collapsible history).
+- **Chat redesign**: sticky reply input always visible, day separators (Today / Yesterday / weekday), top + bottom fade affordances, "Jump to latest" / "New messages" pill when scrolled away from bottom, larger bubbles with shadow + ring.
+- **Mobile-first overhaul**: floating compose FAB, full-screen drawers under `sm`, edge-to-edge inbox card on mobile, person tap opens full-screen, scroll-snap on inbox tabs, bottom-anchored selection bar with safe-area padding, larger touch targets (min 44 px), `text-base` on toolbar inputs to prevent iOS zoom.
+- **Capability-aware animation gating**: new `useReducedAnimations()` hook detects `prefers-reduced-motion`, `navigator.connection.saveData`, slow connections, low device memory (< 4 GB), low core count (< 4) and renders a static CSS gradient fallback instead of the WebGL shader. Global CSS `@media (prefers-reduced-motion: reduce)` zero-duration overrides for animations and transitions.
+- **Reusable page chrome**: `PageHeader` and `PageContainer` components applied to ApiKeys, Templates, Sequences, AdminUsers, Settings, and Inboxes — consistent title / subtitle / action layout, capped at `max-w-[1600px]` to better use desktop real estate.
+- **Inboxes admin redesign**: real `<table>` with bulk select header checkbox, bulk Thread/Chat/Delete actions in a contextual bar, inline display-name editing, per-row mode toggle, and a popover-based member assignment cell.
+- **Public legal pages**: `/terms` and `/privacy` rendered through a new `LegalLayout` (light readable doc style) with content appropriate for self-hosted Apache 2.0 software (operator-as-data-controller framing).
+- **API**: `POST /api/people/mark-read` bulk endpoint (with optional `recipient` scope); `GET /api/people/grouped` accepts `recipient` / `unread` / `hasAttachment` filters and returns a new `recipients: string[]` field.
+- **Demo seed generator**: `seeds/generate-demo.ts` (run via `npx tsx`) produces a 100-person / ~700-email dataset across 6 inboxes for stress-testing UI behaviour. The committed `seeds/demo.sql` is unchanged — use the generator to overwrite locally.
+
+### Changed
+
+- **Default inbox view** is now `Table` (was `List`).
+- **Default `displayMode`** for inboxes is now `chat` (was `thread`). Existing rows keep their explicit setting; only the fallback for rows without a `sender_identities` entry flipped. Tests updated accordingly.
+- **`PersonList` is now controlled** — data fetching for the people list lives in `InboxPage` so both Table and List views see the same paginated data. Previously the fetch was inside `PersonList`, which made the Table view show empty state.
+- **`InboxToolbar`** consolidates what used to be three separate components (search input in the sidebar header, filter bar above the inbox card, view toggle on its own row) into a single bordered bar.
+- **Auth pages** (`Login`, `Onboarding`, `InviteAccept`, `SetupPasskey`) restyled with the glass-card pattern on the animated dark backdrop. Login flow simplified to `Continue with passkey` (primary) and `Continue with email` (secondary fallback).
+- **Footer** is a single-row layout (Privacy/Terms pills · copyright · sponsor pill), with a `variant="dark"` mode for auth pages so it stays legible against the dark backdrop.
+- **`PeopleTable` "Inboxes" column** shows the actual inbox names as chips (first 3 + overflow `+N`), not just a count.
+
+### Fixed
+
+- Table view scroll: nested flex containers need `min-h-0 + overflow-hidden` on the immediate parent to constrain inner scroll regions; wrapper around `PeopleTable` updated.
+- Footer was painted over by the fixed `dashboard-backdrop-mask` overlay; mask gradient now fades earlier and `Footer` is wrapped in `relative z-10`.
+- Right-side drawers now slide in via pure-CSS keyframes (`drawer-slide-in / drawer-slide-out`) rather than relying on tailwindcss-animate's specific class names.
+
+### Dependencies
+
+- Added `@paper-design/shaders-react` for the auth-screen GrainGradient. `vite.config.ts` adds `resolve.dedupe: ["react","react-dom"]` and `optimizeDeps.include` so the lazy-loaded shader doesn't end up with a duplicate React copy.
+
 ## [0.3.3] - 2026-05-05
 
 ### Fixed

@@ -21,6 +21,9 @@ import InviteAcceptPage from "@/pages/InviteAcceptPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
 import ApiKeysPage from "@/pages/ApiKeysPage";
 import DashboardLayout from "@/components/DashboardLayout";
+import PublicLayout from "@/components/PublicLayout";
+import TermsPage from "@/pages/TermsPage";
+import PrivacyPage from "@/pages/PrivacyPage";
 import SequencesPage from "@/pages/SequencesPage";
 import SequenceDetailPage from "@/pages/SequenceDetailPage";
 import SequenceEditorPage from "@/pages/SequenceEditorPage";
@@ -111,11 +114,17 @@ function App() {
         <BrowserRouter>
           <NotificationClickListener />
           <Routes>
-            {/* Public routes */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/onboarding" element={<OnboardingPage />} />
-            <Route path="/invite/:token" element={<InviteAcceptPage />} />
-            <Route path="/setup-passkey" element={<SetupPasskeyPage />} />
+            {/* Public routes — shared dark backdrop + footer shell */}
+            <Route element={<PublicLayout />}>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
+              <Route path="/invite/:token" element={<InviteAcceptPage />} />
+              <Route path="/setup-passkey" element={<SetupPasskeyPage />} />
+            </Route>
+
+            {/* Public legal pages — light readable layout, no auth */}
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
 
             {/* Authenticated routes with shared layout */}
             <Route element={<AuthGuard />}>

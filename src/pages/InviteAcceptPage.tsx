@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { signIn } from "@/lib/auth-client";
 import { validateInvite, acceptInvite } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WordmarkLarge } from "@/components/Wordmark";
 import { useBranding } from "@/lib/branding";
 
 export default function InviteAcceptPage() {
@@ -62,7 +62,12 @@ export default function InviteAcceptPage() {
         setError("Account created but sign-in failed. Please go to login.");
         return;
       }
-      window.location.href = passkeyRequired ? "/setup-passkey" : "/";
+      // Redirect home regardless of passkey gating; the auth guard will
+      // bounce to /setup-passkey if needed once the session is loaded.
+      // This avoids a race where /api/config hasn't responded yet and we
+      // end up stuck on /invite/ while passkeyRequired flips.
+      void passkeyRequired;
+      window.location.href = "/";
     } catch (err: any) {
       setError(err?.message || "Failed to accept invitation");
     } finally {
@@ -71,118 +76,110 @@ export default function InviteAcceptPage() {
   }
 
   if (status === "loading") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-subtle">
-        <p className="text-text-secondary">Validating invitation...</p>
-      </div>
-    );
+    return <p className="text-sm text-white/60">Validating invitation…</p>;
   }
 
   if (status === "invalid") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-subtle">
-        <Card className="w-full max-w-sm border-border bg-white ring-1 ring-gray-200 rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-xl text-text-primary">
-              Invalid Invitation
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-text-secondary">
-              This invitation link is invalid, expired, or has already been
-              used.
-            </p>
-          </CardContent>
-        </Card>
+      <div className="flex w-full max-w-sm flex-col items-center gap-8">
+        <WordmarkLarge />
+        <div className="w-full rounded-2xl bg-white/10 p-8 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl">
+          <h2 className="text-xl font-extrabold tracking-tight text-white">
+            Invalid invitation
+          </h2>
+          <p className="mt-3 text-sm font-light text-white/60">
+            This invitation link is invalid, expired, or has already been used.
+          </p>
+        </div>
       </div>
     );
   }
 
-  const inputClass =
-    "h-8 w-full rounded-md border border-border bg-white ring-1 ring-gray-200 px-3 text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent";
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-subtle px-4">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6">
-        <img src="/saasmail-logo.png" alt="saasmail" className="h-10 w-auto" />
-        <Card className="w-full border-border bg-white ring-1 ring-gray-200 rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-xl text-text-primary">
-              Join saasmail
-            </CardTitle>
-            <p className="text-xs text-text-secondary">
-              Create your account to get started.
+    <div className="flex w-full max-w-sm flex-col items-center gap-8">
+      <WordmarkLarge />
+      <div className="w-full rounded-2xl bg-white/10 p-8 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl">
+        <div className="mb-6">
+          <h2 className="text-xl font-extrabold tracking-tight text-white">
+            Join saasmail
+          </h2>
+          <p className="mt-1.5 text-sm font-light text-white/60">
+            Create your account to get started.
+          </p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="invite-name"
+              className="text-xs font-medium uppercase tracking-wider text-white/50"
+            >
+              Name
+            </label>
+            <input
+              id="invite-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              autoComplete="name"
+              className={INPUT_CLASS}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="invite-email"
+              className="text-xs font-medium uppercase tracking-wider text-white/50"
+            >
+              Email
+            </label>
+            <input
+              id="invite-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              disabled={!!inviteEmail}
+              className={INPUT_CLASS + (inviteEmail ? " opacity-60" : "")}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="invite-password"
+              className="text-xs font-medium uppercase tracking-wider text-white/50"
+            >
+              Password
+            </label>
+            <input
+              id="invite-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              className={INPUT_CLASS}
+            />
+            <p className="text-xs font-light text-white/40">
+              At least 8 characters.
             </p>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="invite-name"
-                  className="text-xs font-medium text-text-secondary"
-                >
-                  Name
-                </label>
-                <input
-                  id="invite-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  className={inputClass}
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="invite-email"
-                  className="text-xs font-medium text-text-secondary"
-                >
-                  Email
-                </label>
-                <input
-                  id="invite-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                  disabled={!!inviteEmail}
-                  className={inputClass + (inviteEmail ? " opacity-50" : "")}
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="invite-password"
-                  className="text-xs font-medium text-text-secondary"
-                >
-                  Password
-                </label>
-                <input
-                  id="invite-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  className={inputClass}
-                />
-                <p className="text-[10px] text-text-tertiary">
-                  At least 8 characters.
-                </p>
-              </div>
-              {error && <p className="text-xs text-destructive">{error}</p>}
-              <button
-                type="submit"
-                className="w-full rounded-md bg-accent py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                disabled={loading}
-              >
-                {loading ? "Creating account..." : "Create account"}
-              </button>
-            </form>
-          </CardContent>
-        </Card>
+          </div>
+          {error && (
+            <p className="text-sm text-red-300" role="alert">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            className="w-full rounded-full bg-white py-2.5 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading}
+          >
+            {loading ? "Creating account…" : "Create account"}
+          </button>
+        </form>
       </div>
     </div>
   );
 }
+
+const INPUT_CLASS =
+  "h-10 w-full rounded-md border-0 bg-white/5 px-3 text-sm text-white ring-1 ring-white/15 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 transition-all";

@@ -73,10 +73,12 @@ describe("admin inboxes router", () => {
   it("PATCH clears display name when null is provided", async () => {
     const { apiKey } = await createTestUser({ role: "admin" });
     const now = Math.floor(Date.now() / 1000);
+    // Inserts row at the new default (chat) so PATCH-to-null displayName
+    // collapses to defaults and the row is removed.
     await getDb().insert(senderIdentities).values({
       email: "a@x.com",
       displayName: "Alpha",
-      displayMode: "thread", // ← add this line
+      displayMode: "chat",
       createdAt: now,
       updatedAt: now,
     });
@@ -96,7 +98,7 @@ describe("admin inboxes router", () => {
     expect(rows).toHaveLength(0);
   });
 
-  it("GET returns displayMode (defaulting to 'thread' when no row)", async () => {
+  it("GET returns displayMode (defaulting to 'chat' when no row)", async () => {
     const { apiKey } = await createTestUser({ role: "admin" });
     await createTestPerson();
     await createTestEmail({ recipient: "a@x.com" });
@@ -104,7 +106,7 @@ describe("admin inboxes router", () => {
     await getDb().insert(senderIdentities).values({
       email: "b@x.com",
       displayName: "Bee",
-      displayMode: "chat",
+      displayMode: "thread",
       createdAt: now,
       updatedAt: now,
     });
@@ -116,8 +118,10 @@ describe("admin inboxes router", () => {
       displayMode: "thread" | "chat";
     }>;
     const byEmail = Object.fromEntries(body.map((b) => [b.email, b]));
-    expect(byEmail["a@x.com"].displayMode).toBe("thread");
-    expect(byEmail["b@x.com"].displayMode).toBe("chat");
+    // a@x.com has no sender_identities row → falls back to default (chat).
+    expect(byEmail["a@x.com"].displayMode).toBe("chat");
+    // b@x.com has an explicit thread row → preserved.
+    expect(byEmail["b@x.com"].displayMode).toBe("thread");
   });
 
   it("PATCH persists displayMode independently of displayName", async () => {
@@ -129,7 +133,7 @@ describe("admin inboxes router", () => {
       {
         apiKey,
         method: "PATCH",
-        body: JSON.stringify({ displayMode: "chat" }),
+        body: JSON.stringify({ displayMode: "thread" }),
       },
     );
     expect(res.status).toBe(200);
@@ -138,23 +142,23 @@ describe("admin inboxes router", () => {
       displayName: string | null;
       displayMode: "thread" | "chat";
     };
-    expect(body.displayMode).toBe("chat");
+    expect(body.displayMode).toBe("thread");
     expect(body.displayName).toBeNull();
     const rows = await getDb()
       .select()
       .from(senderIdentities)
       .where(eq(senderIdentities.email, "a@x.com"));
-    expect(rows[0]?.displayMode).toBe("chat");
+    expect(rows[0]?.displayMode).toBe("thread");
     expect(rows[0]?.displayName).toBeNull();
   });
 
-  it("PATCH keeps the row when displayName=null but displayMode=chat", async () => {
+  it("PATCH keeps the row when displayName=null but displayMode=thread", async () => {
     const { apiKey } = await createTestUser({ role: "admin" });
     const now = Math.floor(Date.now() / 1000);
     await getDb().insert(senderIdentities).values({
       email: "a@x.com",
       displayName: "Alpha",
-      displayMode: "chat",
+      displayMode: "thread",
       createdAt: now,
       updatedAt: now,
     });
@@ -173,7 +177,7 @@ describe("admin inboxes router", () => {
       .where(eq(senderIdentities.email, "a@x.com"));
     expect(rows).toHaveLength(1);
     expect(rows[0].displayName).toBeNull();
-    expect(rows[0].displayMode).toBe("chat");
+    expect(rows[0].displayMode).toBe("thread");
   });
 
   it("PATCH deletes the row when both fields are at defaults", async () => {
@@ -182,16 +186,18 @@ describe("admin inboxes router", () => {
     await getDb().insert(senderIdentities).values({
       email: "a@x.com",
       displayName: "Alpha",
-      displayMode: "chat",
+      displayMode: "thread",
       createdAt: now,
       updatedAt: now,
     });
+    // Defaults are now displayName=null + displayMode=chat — patching back
+    // to those values should sparse-delete the row.
     const res = await authFetch(
       `/api/admin/inboxes/${encodeURIComponent("a@x.com")}`,
       {
         apiKey,
         method: "PATCH",
-        body: JSON.stringify({ displayName: null, displayMode: "thread" }),
+        body: JSON.stringify({ displayName: null, displayMode: "chat" }),
       },
     );
     expect(res.status).toBe(200);

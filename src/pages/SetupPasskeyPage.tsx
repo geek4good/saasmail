@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WordmarkLarge } from "@/components/Wordmark";
 
 export default function SetupPasskeyPage() {
   const [error, setError] = useState("");
@@ -24,30 +24,29 @@ export default function SetupPasskeyPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-subtle px-4">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6">
-        <img src="/saasmail-logo.png" alt="saasmail" className="h-10 w-auto" />
-        <Card className="w-full border-border bg-white ring-1 ring-gray-200 rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-xl text-text-primary">
-              Register a Passkey
-            </CardTitle>
-            <p className="text-xs text-text-secondary">
-              For security, you must register a passkey before accessing
-              saasmail.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            <button
-              className="w-full rounded-md bg-accent py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              onClick={handleRegister}
-              disabled={loading}
-            >
-              {loading ? "Registering..." : "Register Passkey"}
-            </button>
-          </CardContent>
-        </Card>
+    <div className="flex w-full max-w-sm flex-col items-center gap-8">
+      <WordmarkLarge />
+      <div className="w-full rounded-2xl bg-white/10 p-8 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl">
+        <div className="mb-6">
+          <h2 className="text-xl font-extrabold tracking-tight text-white">
+            Register a passkey
+          </h2>
+          <p className="mt-1.5 text-sm font-light text-white/60">
+            For security, you must register a passkey before accessing saasmail.
+          </p>
+        </div>
+        {error && (
+          <p className="mb-4 text-sm text-red-300" role="alert">
+            {error}
+          </p>
+        )}
+        <button
+          className="w-full rounded-full bg-white py-2.5 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={handleRegister}
+          disabled={loading}
+        >
+          {loading ? "Registering…" : "Register passkey"}
+        </button>
       </div>
     </div>
   );

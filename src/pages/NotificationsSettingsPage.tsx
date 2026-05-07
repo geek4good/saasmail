@@ -5,6 +5,7 @@ import {
   enablePush,
   disablePush,
 } from "@/lib/push";
+import PageHeader, { PageContainer } from "@/components/PageHeader";
 
 interface Subscription {
   id: string;
@@ -39,21 +40,30 @@ export default function NotificationsSettingsPage() {
     void refresh();
   }, []);
 
+  function MessageState({ children }: { children: React.ReactNode }) {
+    return (
+      <PageContainer>
+        <PageHeader title="Settings" />
+        <p className="text-sm text-text-secondary">{children}</p>
+      </PageContainer>
+    );
+  }
+
   if (!supported) {
     return (
-      <div className="p-6 text-sm text-text-secondary">
+      <MessageState>
         Your browser does not support push notifications.
-      </div>
+      </MessageState>
     );
   }
   if (pushEnabled === null) {
-    return <div className="p-6 text-sm text-text-secondary">Loading…</div>;
+    return <MessageState>Loading…</MessageState>;
   }
   if (pushEnabled === false) {
     return (
-      <div className="p-6 text-sm text-text-secondary">
+      <MessageState>
         Push notifications are not configured on this saasmail deployment.
-      </div>
+      </MessageState>
     );
   }
 
@@ -94,71 +104,85 @@ export default function NotificationsSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <h1 className="text-xl font-semibold text-text-primary">Notifications</h1>
+    <PageContainer>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage push notifications and per-device subscriptions."
+      />
 
-      <section className="rounded-md border border-border bg-bg-subtle p-4">
-        <h2 className="text-sm font-medium text-text-primary">This browser</h2>
-        <p className="mt-1 text-xs text-text-tertiary">
-          {subscribedHere
-            ? "Push is on for this browser."
-            : "Push is off for this browser."}
-        </p>
-        {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
-        <div className="mt-3">
-          {subscribedHere ? (
-            <button
-              className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-muted hover:text-text-primary"
-              disabled={busy || !vapidPublicKey}
-              onClick={onDisable}
-            >
-              Disable
-            </button>
+      <div className="max-w-3xl space-y-5">
+        <section className="rounded-[8px] bg-card p-5 ring-1 ring-border">
+          <h2 className="text-sm font-semibold text-text-primary">
+            This browser
+          </h2>
+          <p className="mt-1 text-xs font-light text-text-secondary">
+            {subscribedHere
+              ? "Push is on for this browser."
+              : "Push is off for this browser."}
+          </p>
+          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+          <div className="mt-3">
+            {subscribedHere ? (
+              <button
+                className="rounded-[6px] border border-border px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-muted hover:text-text-primary"
+                disabled={busy || !vapidPublicKey}
+                onClick={onDisable}
+              >
+                Disable
+              </button>
+            ) : (
+              <button
+                className="rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-text-primary/90"
+                disabled={busy || !vapidPublicKey}
+                onClick={onEnable}
+              >
+                Enable
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
+          <div className="border-b border-border px-5 py-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              All subscribed browsers
+            </h2>
+          </div>
+          {subs.length === 0 ? (
+            <p className="px-5 py-4 text-xs font-light text-text-tertiary">
+              None yet.
+            </p>
           ) : (
-            <button
-              className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
-              disabled={busy || !vapidPublicKey}
-              onClick={onEnable}
-            >
-              Enable
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-md border border-border bg-bg-subtle p-4">
-        <h2 className="text-sm font-medium text-text-primary">
-          All subscribed browsers
-        </h2>
-        {subs.length === 0 ? (
-          <p className="mt-1 text-xs text-text-tertiary">None yet.</p>
-        ) : (
-          <ul className="mt-2 divide-y divide-border text-xs">
-            {subs.map((s) => (
-              <li key={s.id} className="flex items-center justify-between py-2">
-                <div>
-                  <div className="font-medium text-text-primary">
-                    {s.userAgent ?? "Unknown browser"}
-                  </div>
-                  <div className="text-text-tertiary">
-                    added {new Date(s.createdAt * 1000).toLocaleString()}
-                    {s.lastUsedAt
-                      ? ` · last used ${new Date(s.lastUsedAt * 1000).toLocaleString()}`
-                      : ""}
-                  </div>
-                </div>
-                <button
-                  className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:bg-bg-muted hover:text-text-primary"
-                  disabled={busy}
-                  onClick={() => onRevoke(s.id)}
+            <ul className="divide-y divide-border/60 text-xs">
+              {subs.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between gap-4 px-5 py-3"
                 >
-                  Revoke
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-text-primary">
+                      {s.userAgent ?? "Unknown browser"}
+                    </div>
+                    <div className="text-xs font-light text-text-tertiary">
+                      added {new Date(s.createdAt * 1000).toLocaleString()}
+                      {s.lastUsedAt
+                        ? ` · last used ${new Date(s.lastUsedAt * 1000).toLocaleString()}`
+                        : ""}
+                    </div>
+                  </div>
+                  <button
+                    className="rounded-[6px] border border-border px-2 py-1 text-xs font-medium text-text-secondary hover:bg-bg-muted hover:text-text-primary"
+                    disabled={busy}
+                    onClick={() => onRevoke(s.id)}
+                  >
+                    Revoke
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </PageContainer>
   );
 }

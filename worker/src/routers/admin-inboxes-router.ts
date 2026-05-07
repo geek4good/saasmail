@@ -64,7 +64,7 @@ adminInboxesRouter.openapi(listInboxesRoute, async (c) => {
     rows.map((r) => ({
       email: r.email,
       displayName: r.displayName,
-      displayMode: r.displayMode ?? "thread",
+      displayMode: r.displayMode ?? "chat",
       assignedUserIds: r.assignedUserIds ? JSON.parse(r.assignedUserIds) : [],
     })),
     200,
@@ -116,7 +116,7 @@ adminInboxesRouter.openapi(createInboxRoute, async (c) => {
   const body = c.req.valid("json");
   const email = body.email.trim().toLowerCase();
   const displayName = body.displayName ?? null;
-  const displayMode = body.displayMode ?? "thread";
+  const displayMode = body.displayMode ?? "chat";
   const now = Math.floor(Date.now() / 1000);
 
   const existing = await db
@@ -154,7 +154,7 @@ const patchInboxRoute = createRoute({
   path: "/{email}",
   tags: ["Admin Inboxes"],
   description:
-    "Update display name and/or display mode for an inbox. Row is deleted only when both fields are at defaults (null + 'thread').",
+    "Update display name and/or display mode for an inbox. Row is deleted only when both fields are at defaults (null + 'chat').",
   request: {
     params: z.object({ email: z.string() }),
     body: {
@@ -201,12 +201,12 @@ adminInboxesRouter.openapi(patchInboxRoute, async (c) => {
   const nextDisplayMode =
     body.displayMode !== undefined
       ? body.displayMode
-      : (currentRow?.displayMode ?? "thread");
+      : (currentRow?.displayMode ?? "chat");
 
   // Both fields at defaults → delete the row to keep the table sparse.
-  if (nextDisplayName === null && nextDisplayMode === "thread") {
+  if (nextDisplayName === null && nextDisplayMode === "chat") {
     await db.delete(senderIdentities).where(eq(senderIdentities.email, email));
-    return c.json({ email, displayName: null, displayMode: "thread" }, 200);
+    return c.json({ email, displayName: null, displayMode: "chat" }, 200);
   }
 
   await db

@@ -19,6 +19,12 @@ test.describe.serial("thread-mode display (marketing@)", () => {
     await expect(page.getByText("Alice Anderson")).toBeVisible();
     await page.getByText("Alice Anderson").click();
 
+    // The redesign tabs each inbox per person. Switch to the marketing@ tab
+    // (thread mode) so thread messages are rendered.
+    await page
+      .locator(`[data-testid="inbox-tab"]`, { hasText: "marketing" })
+      .click();
+
     // The latest email (e_m_a2) subject should be visible in the thread
     await expect(page.getByText("Re: Welcome to our product")).toBeVisible();
 

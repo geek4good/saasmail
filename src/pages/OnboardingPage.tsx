@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { signIn } from "@/lib/auth-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WordmarkLarge } from "@/components/Wordmark";
 import { useBranding } from "@/lib/branding";
 
 type Status = "checking" | "available" | "unavailable";
@@ -63,120 +63,115 @@ export default function OnboardingPage() {
   }
 
   if (status === "checking") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-subtle">
-        <p className="text-text-secondary">Loading...</p>
-      </div>
-    );
+    return <p className="text-sm text-white/60">Loading…</p>;
   }
 
   if (status === "unavailable") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-subtle">
-        <Card className="w-full max-w-sm border-border bg-white ring-1 ring-gray-200 rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-xl text-text-primary">
-              Setup complete
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-xs text-text-secondary">
-              An administrator account already exists. Please sign in instead.
-            </p>
-            <button
-              className="w-full rounded-md bg-accent py-2 text-xs font-medium text-white hover:bg-accent-hover"
-              onClick={() => navigate("/login")}
-            >
-              Go to sign in
-            </button>
-          </CardContent>
-        </Card>
+      <div className="flex w-full max-w-sm flex-col items-center gap-8">
+        <WordmarkLarge />
+        <div className="w-full rounded-2xl bg-white/10 p-8 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl">
+          <h2 className="text-xl font-extrabold tracking-tight text-white">
+            Setup complete
+          </h2>
+          <p className="mt-3 text-sm font-light text-white/60">
+            An administrator account already exists. Please sign in instead.
+          </p>
+          <button
+            className="mt-6 w-full rounded-full bg-white py-2.5 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-white/90"
+            onClick={() => navigate("/login")}
+          >
+            Go to sign in
+          </button>
+        </div>
       </div>
     );
   }
 
-  const inputClass =
-    "h-8 w-full rounded-md border border-border bg-white ring-1 ring-gray-200 px-3 text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent";
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-subtle px-4">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6">
-        <img src="/saasmail-logo.png" alt="saasmail" className="h-10 w-auto" />
-        <Card className="w-full border-border bg-white ring-1 ring-gray-200 rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-xl text-text-primary">Welcome</CardTitle>
-            <p className="text-xs text-text-secondary">
-              Create the first administrator account to get started.
+    <div className="flex w-full max-w-sm flex-col items-center gap-8">
+      <WordmarkLarge />
+      <div className="w-full rounded-2xl bg-white/10 p-8 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl">
+        <div className="mb-6">
+          <h2 className="text-xl font-extrabold tracking-tight text-white">
+            Welcome
+          </h2>
+          <p className="mt-1.5 text-sm font-light text-white/60">
+            Create the first administrator account to get started.
+          </p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="onboarding-name"
+              className="text-xs font-medium uppercase tracking-wider text-white/50"
+            >
+              Name
+            </label>
+            <input
+              id="onboarding-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              autoComplete="name"
+              className={INPUT_CLASS}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="onboarding-email"
+              className="text-xs font-medium uppercase tracking-wider text-white/50"
+            >
+              Email
+            </label>
+            <input
+              id="onboarding-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              className={INPUT_CLASS}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="onboarding-password"
+              className="text-xs font-medium uppercase tracking-wider text-white/50"
+            >
+              Password
+            </label>
+            <input
+              id="onboarding-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              className={INPUT_CLASS}
+            />
+            <p className="text-xs font-light text-white/40">
+              At least 8 characters.
             </p>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="onboarding-name"
-                  className="text-xs font-medium text-text-secondary"
-                >
-                  Name
-                </label>
-                <input
-                  id="onboarding-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  className={inputClass}
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="onboarding-email"
-                  className="text-xs font-medium text-text-secondary"
-                >
-                  Email
-                </label>
-                <input
-                  id="onboarding-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                  className={inputClass}
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="onboarding-password"
-                  className="text-xs font-medium text-text-secondary"
-                >
-                  Password
-                </label>
-                <input
-                  id="onboarding-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  className={inputClass}
-                />
-                <p className="text-[10px] text-text-tertiary">
-                  At least 8 characters.
-                </p>
-              </div>
-              {error && <p className="text-xs text-destructive">{error}</p>}
-              <button
-                type="submit"
-                className="w-full rounded-md bg-accent py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                disabled={loading}
-              >
-                {loading ? "Creating account..." : "Create administrator"}
-              </button>
-            </form>
-          </CardContent>
-        </Card>
+          </div>
+          {error && (
+            <p className="text-sm text-red-300" role="alert">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            className="w-full rounded-full bg-white py-2.5 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading}
+          >
+            {loading ? "Creating account…" : "Create administrator"}
+          </button>
+        </form>
       </div>
     </div>
   );
 }
+
+const INPUT_CLASS =
+  "h-10 w-full rounded-md border-0 bg-white/5 px-3 text-sm text-white ring-1 ring-white/15 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 transition-all";

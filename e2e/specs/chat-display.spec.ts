@@ -19,6 +19,12 @@ test.describe.serial("chat-mode display (support@)", () => {
     await expect(page.getByText("Alice Anderson")).toBeVisible();
     await page.getByText("Alice Anderson").click();
 
+    // The redesign tabs each inbox per person. Switch to the support@ tab
+    // (chat mode) so chat bubbles are rendered.
+    await page
+      .locator(`[data-testid="inbox-tab"]`, { hasText: "support" })
+      .click();
+
     // Chat bubbles should be rendered (2 support@ emails)
     const bubbles = page.getByTestId(TEST_IDS.chatBubble);
     await expect(bubbles).toHaveCount(2);

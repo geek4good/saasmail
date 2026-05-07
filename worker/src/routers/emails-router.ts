@@ -237,7 +237,7 @@ emailsRouter.openapi(listPersonEmailsRoute, async (c) => {
     return {
       email,
       displayName: id?.displayName ?? null,
-      displayMode: (id?.displayMode ?? "thread") as "thread" | "chat",
+      displayMode: (id?.displayMode ?? "chat") as "thread" | "chat",
     };
   });
 

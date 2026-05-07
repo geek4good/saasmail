@@ -90,8 +90,8 @@ export default function ChatQuickReply({
   }
 
   return (
-    <div className="border-t border-border bg-white px-4 py-2">
-      <div className="flex items-end gap-2">
+    <div className="border-t border-border bg-card px-4 py-3 sm:px-6">
+      <div className="flex items-end gap-2 rounded-[10px] bg-bg-subtle/60 p-2 ring-1 ring-border focus-within:ring-2 focus-within:ring-text-primary/15">
         <textarea
           ref={ref}
           value={text}
@@ -101,23 +101,24 @@ export default function ChatQuickReply({
           placeholder={
             latestReceivedEmailId ? "Type a reply…" : "Type a message…"
           }
-          className="flex-1 resize-none rounded-md border border-border bg-white px-2 py-1.5 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent disabled:bg-bg-muted disabled:text-text-tertiary"
+          className="flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:text-text-tertiary"
         />
         <button
           type="button"
           onClick={handleSend}
           disabled={!canSend}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          className="shrink-0 rounded-[8px] bg-text-primary px-3.5 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {sending ? "Sending…" : "Send"}
         </button>
       </div>
-      <div className="mt-1 flex items-center justify-between">
+      <div className="mt-1.5 flex items-center justify-between">
         {error ? (
           <span className="text-xs text-destructive">{error}</span>
         ) : (
-          <span className="text-[11px] text-text-tertiary">
-            Plain text · sent from {inboxAddress} · ⌘/Ctrl+Enter to send
+          <span className="text-[11px] font-light text-text-tertiary">
+            Sending from <span className="font-medium">{inboxAddress}</span> ·
+            ⌘/Ctrl + Enter to send
           </span>
         )}
       </div>

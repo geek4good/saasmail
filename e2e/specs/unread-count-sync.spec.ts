@@ -28,8 +28,13 @@ test.describe.serial("sidebar unread count stays in sync", () => {
     const aliceBadge = aliceRow.getByTestId(TEST_IDS.personUnreadBadge);
     await expect(aliceBadge).toHaveText("4");
 
-    // Select Alice — opens PersonDetail with chat + thread sections.
+    // Select Alice — opens PersonDetail with tabbed inbox sections.
     await aliceRow.click();
+
+    // Switch to the support@ tab (chat mode) so chat bubbles are rendered.
+    await page
+      .locator(`[data-testid="inbox-tab"]`, { hasText: "support" })
+      .click();
 
     // Click the first chat bubble (support@e2e.test, chat-mode) to mark it read.
     const firstBubble = page.getByTestId(TEST_IDS.chatBubble).first();

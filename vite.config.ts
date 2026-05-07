@@ -14,6 +14,13 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Force a single React instance — prevents the "Invalid hook call" error
+    // when lazy-loading @paper-design/shaders-react which can otherwise be
+    // bundled with its own React copy.
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    include: ["@paper-design/shaders-react"],
   },
   build: {},
 });

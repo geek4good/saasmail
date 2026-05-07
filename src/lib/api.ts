@@ -17,6 +17,7 @@ export interface GroupedPerson {
   unreadCount: number;
   totalCount: number;
   recipientCount: number;
+  recipients: string[];
   hasAttachment: number;
 }
 
@@ -113,11 +114,17 @@ export interface PaginatedGroupedPeople {
 
 export async function fetchGroupedPeople(params?: {
   q?: string;
+  recipient?: string;
+  unread?: boolean;
+  hasAttachment?: boolean;
   page?: number;
   limit?: number;
 }): Promise<PaginatedGroupedPeople> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
+  if (params?.recipient) qs.set("recipient", params.recipient);
+  if (params?.unread) qs.set("unread", "1");
+  if (params?.hasAttachment) qs.set("hasAttachment", "1");
   if (params?.page) qs.set("page", params.page.toString());
   if (params?.limit) qs.set("limit", params.limit.toString());
   return apiFetch(`/api/people/grouped?${qs}`);
@@ -158,6 +165,19 @@ export async function deleteEmail(
 
 export async function deletePerson(id: string): Promise<{ success: boolean }> {
   return apiFetch(`/api/people/${id}`, { method: "DELETE" });
+}
+
+/** Mark all unread emails for the given people as read.
+ *  Optional `recipient` narrows the scope to a single inbox. */
+export async function markPeopleRead(
+  personIds: string[],
+  recipient?: string,
+): Promise<{ success: boolean; affected: number }> {
+  return apiFetch(`/api/people/mark-read`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personIds, recipient }),
+  });
 }
 
 export async function sendEmail(data: {

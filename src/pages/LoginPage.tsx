@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { Mail, Fingerprint, ArrowRight } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -29,8 +29,8 @@ export default function LoginPage() {
 
   if (setupRequired === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-subtle">
-        <p className="text-text-secondary">Loading...</p>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="animate-pulse text-sm text-white/40">Loading…</p>
       </div>
     );
   }
@@ -61,10 +61,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const result = await authClient.signIn.email({
-        email,
-        password,
-      });
+      const result = await authClient.signIn.email({ email, password });
       if (result?.error) {
         setError(result.error.message || "Sign-in failed");
       } else {
@@ -78,76 +75,139 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-subtle px-4">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6">
-        <img src="/saasmail-logo.png" alt="saasmail" className="h-10 w-auto" />
-        <Card className="w-full border-border bg-white ring-1 ring-gray-200 rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-xl text-text-primary">Sign in</CardTitle>
-            <p className="text-xs text-text-secondary">Welcome back.</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            {mode === "passkey" ? (
-              <>
-                <button
-                  className="w-full rounded-md bg-accent py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                  onClick={handlePasskeyLogin}
-                  disabled={loading}
-                >
-                  {loading ? "Signing in..." : "Sign in with Passkey"}
-                </button>
-                <button
-                  className="w-full text-xs text-text-secondary hover:text-text-primary"
-                  onClick={() => {
-                    setError("");
-                    setMode("password");
-                  }}
-                  type="button"
-                >
-                  Sign in with email instead
-                </button>
-              </>
-            ) : (
-              <form onSubmit={handlePasswordLogin} className="space-y-3">
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-md border border-border bg-white ring-1 ring-gray-200 px-3 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
-                  required
-                />
-                <input
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-md border border-border bg-white ring-1 ring-gray-200 px-3 py-2 text-xs text-text-primary placeholder:text-text-secondary focus:border-accent focus:outline-none"
-                  required
-                />
-                <button
-                  type="submit"
-                  className="w-full rounded-md bg-accent py-2 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                  disabled={loading}
-                >
-                  {loading ? "Signing in..." : "Sign in"}
-                </button>
-                <button
-                  className="w-full text-xs text-text-secondary hover:text-text-primary"
-                  onClick={() => {
-                    setError("");
-                    setMode("passkey");
-                  }}
-                  type="button"
-                >
-                  Sign in with passkey instead
-                </button>
-              </form>
-            )}
-          </CardContent>
-        </Card>
+    <div className="relative z-10 mx-4 w-full max-w-sm">
+      <div className="rounded-2xl bg-white/10 p-8 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl">
+        {/* Brand block — matches givefeedback's auth layout exactly */}
+        <div className="mb-8 text-center">
+          <Mail
+            className="mx-auto mb-4 h-12 w-12"
+            strokeWidth={2}
+            style={{ color: "#BFFF00" }}
+            aria-hidden
+          />
+          <h1 className="text-2xl font-extrabold uppercase tracking-tight text-white">
+            saasmail
+          </h1>
+          <p className="mt-2 text-sm font-light text-white/50">
+            One unified timeline per customer
+          </p>
+        </div>
+
+        {error && (
+          <p
+            role="alert"
+            className="text-destructive mb-4 rounded-md bg-red-500/15 px-3 py-2 text-center text-xs text-red-200 ring-1 ring-red-500/25"
+          >
+            {error}
+          </p>
+        )}
+
+        {mode === "passkey" ? (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={handlePasskeyLogin}
+              disabled={loading}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-[#0a0a0a] transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Fingerprint className="h-4 w-4" strokeWidth={2.25} />
+              {loading ? "Signing in…" : "Continue with passkey"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setMode("password");
+              }}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#24292f] px-4 text-sm font-semibold text-white ring-1 ring-white/15 transition-colors hover:bg-[#24292f]/80"
+            >
+              <Mail className="h-4 w-4" strokeWidth={2.25} />
+              Sign in with email instead
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handlePasswordLogin} className="space-y-3">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="login-email"
+                className="text-[11px] font-medium uppercase tracking-wider text-white/50"
+              >
+                Email
+              </label>
+              <input
+                id="login-email"
+                type="email"
+                placeholder="Email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className={INPUT_CLASS}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="login-password"
+                className="text-[11px] font-medium uppercase tracking-wider text-white/50"
+              >
+                Password
+              </label>
+              <input
+                id="login-password"
+                type="password"
+                placeholder="Password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className={INPUT_CLASS}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-[#0a0a0a] transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? (
+                "Signing in…"
+              ) : (
+                <>
+                  <span>Sign in</span>
+                  <ArrowRight
+                    className="h-4 w-4"
+                    strokeWidth={2.25}
+                    aria-hidden
+                  />
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setMode("passkey");
+              }}
+              className="block w-full text-center text-xs font-light text-white/50 transition-colors hover:text-white/80"
+            >
+              Sign in with passkey instead
+            </button>
+          </form>
+        )}
+
+        <p className="mt-6 text-center text-xs font-light text-white/30">
+          By signing in, you agree to our{" "}
+          <a
+            href="/terms"
+            className="underline-offset-2 hover:text-white/60 hover:underline"
+          >
+            Terms of Service
+          </a>
+        </p>
       </div>
     </div>
   );
 }
+
+const INPUT_CLASS =
+  "h-11 w-full rounded-md border-0 bg-white/5 px-3 text-sm text-white ring-1 ring-white/15 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/40";

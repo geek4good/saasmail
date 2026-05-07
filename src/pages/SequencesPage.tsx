@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus, ListOrdered, Pencil, Trash2 } from "lucide-react";
 import { fetchSequences, deleteSequence, type Sequence } from "@/lib/api";
+import PageHeader, { PageContainer } from "@/components/PageHeader";
 
 export default function SequencesPage() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
@@ -24,57 +26,93 @@ export default function SequencesPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-text-primary">Sequences</h1>
-        <button
-          onClick={() => navigate("/sequences/new")}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
-        >
-          New Sequence
-        </button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Sequences"
+        subtitle="Multi-step drip campaigns. Enroll a contact and saasmail sends templated emails on a schedule."
+        action={
+          <button
+            onClick={() => navigate("/sequences/new")}
+            className="inline-flex items-center gap-1.5 rounded-[8px] bg-text-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90"
+          >
+            <Plus size={14} />
+            New sequence
+          </button>
+        }
+      />
 
-      {loading ? (
-        <p className="text-text-secondary">Loading...</p>
-      ) : sequences.length === 0 ? (
-        <p className="text-text-secondary">No sequences yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {sequences.map((seq) => (
-            <div
-              key={seq.id}
-              data-testid="sequence-row"
-              data-sequence-id={seq.id}
-              className="flex items-center justify-between rounded-lg border border-border bg-white ring-1 ring-gray-200 px-4 py-3"
+      <div className="max-w-4xl">
+        {loading ? (
+          <p className="text-sm font-light text-text-tertiary">Loading…</p>
+        ) : sequences.length === 0 ? (
+          <div className="rounded-[8px] bg-card p-10 text-center ring-1 ring-border">
+            <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet/10">
+              <ListOrdered size={20} style={{ color: "#7c5cfc" }} />
+            </span>
+            <p className="mb-1 text-sm font-medium text-text-primary">
+              No sequences yet
+            </p>
+            <p className="mb-4 text-xs font-light text-text-tertiary">
+              Build your first multi-step campaign to nurture contacts
+              automatically.
+            </p>
+            <button
+              onClick={() => navigate("/sequences/new")}
+              className="inline-flex items-center gap-1.5 rounded-[8px] bg-text-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-text-primary/90"
             >
-              <div
-                className="cursor-pointer"
-                onClick={() => navigate(`/sequences/${seq.id}`)}
-              >
-                <p className="font-medium text-text-primary">{seq.name}</p>
-                <p className="text-xs text-text-secondary">
-                  {seq.steps.length} step{seq.steps.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => navigate(`/sequences/${seq.id}/edit`)}
-                  className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:bg-bg-muted"
+              <Plus size={14} />
+              New sequence
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
+            <ul className="divide-y divide-border/60">
+              {sequences.map((seq) => (
+                <li
+                  key={seq.id}
+                  data-testid="sequence-row"
+                  data-sequence-id={seq.id}
+                  className="group flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-text-primary/[0.02]"
                 >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(seq.id)}
-                  className="rounded-md border border-border px-2 py-1 text-xs text-red-400 hover:bg-bg-muted"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+                  <Link
+                    to={`/sequences/${seq.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-bg-muted">
+                      <ListOrdered size={14} className="text-text-tertiary" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-text-primary">
+                        {seq.name}
+                      </p>
+                      <p className="truncate text-xs font-light text-text-tertiary">
+                        {seq.steps.length} step
+                        {seq.steps.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </Link>
+                  <div className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+                    <button
+                      onClick={() => navigate(`/sequences/${seq.id}/edit`)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                    >
+                      <Pencil size={12} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(seq.id)}
+                      aria-label="Delete"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </PageContainer>
   );
 }
