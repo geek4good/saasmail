@@ -115,7 +115,10 @@ export default function TopNav() {
             {/* User dropdown — also holds secondary nav (API, Inboxes, Users, Settings) */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-medium text-white/80 transition-colors duration-150 hover:bg-white/[0.08] hover:text-white">
+                <button
+                  title={session?.user?.email}
+                  className="flex items-center gap-2 rounded-[8px] px-3 py-2 text-sm font-medium text-white/80 transition-colors duration-150 hover:bg-white/[0.08] hover:text-white"
+                >
                   <span className="flex h-6 w-6 items-center justify-center rounded-[8px] bg-white/[0.12]">
                     <User className="h-3.5 w-3.5 text-white/60" />
                   </span>
