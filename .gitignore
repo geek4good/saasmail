@@ -16,3 +16,5 @@ playwright-report/
 
 # Local superpowers docs (specs, plans)
 docs/superpowers/
+.yarn/
+.yarnrc.yml
