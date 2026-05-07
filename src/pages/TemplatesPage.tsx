@@ -49,16 +49,9 @@ export default function TemplatesPage() {
             <p className="mb-1 text-sm font-medium text-text-primary">
               No templates yet
             </p>
-            <p className="mb-4 text-xs font-light text-text-tertiary">
-              Create your first template to send consistent emails at scale.
+            <p className="text-xs font-light text-text-tertiary">
+              Use the "New template" button above to create your first one.
             </p>
-            <button
-              onClick={() => navigate("/templates/new")}
-              className="inline-flex items-center gap-1.5 rounded-[8px] bg-text-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-text-primary/90"
-            >
-              <Plus size={14} />
-              New template
-            </button>
           </div>
         ) : (
           <div className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">

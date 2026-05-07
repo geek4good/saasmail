@@ -210,4 +210,4 @@ export default function LoginPage() {
 }
 
 const INPUT_CLASS =
-  "h-11 w-full rounded-md border-0 bg-white/5 px-3 text-sm text-white ring-1 ring-white/15 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 transition-all";
+  "h-11 w-full rounded-md border-0 bg-white/5 px-3 text-sm text-white ring-1 ring-white/15 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-white/40";

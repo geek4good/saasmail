@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Plus, ListOrdered, Pencil, Trash2 } from "lucide-react";
 import { fetchSequences, deleteSequence, type Sequence } from "@/lib/api";
 import PageHeader, { PageContainer } from "@/components/PageHeader";
@@ -74,8 +74,8 @@ export default function SequencesPage() {
                   data-sequence-id={seq.id}
                   className="group flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-text-primary/[0.02]"
                 >
-                  <button
-                    onClick={() => navigate(`/sequences/${seq.id}`)}
+                  <Link
+                    to={`/sequences/${seq.id}`}
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-bg-muted">
@@ -90,7 +90,7 @@ export default function SequencesPage() {
                         {seq.steps.length !== 1 ? "s" : ""}
                       </p>
                     </div>
-                  </button>
+                  </Link>
                   <div className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
                     <button
                       onClick={() => navigate(`/sequences/${seq.id}/edit`)}
