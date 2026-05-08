@@ -6,8 +6,10 @@ import { people } from "./db/people.schema";
 import { emails } from "./db/emails.schema";
 import { attachments } from "./db/attachments.schema";
 import { inboxPermissions } from "./db/inbox-permissions.schema";
+import { senderIdentities } from "./db/sender-identities.schema";
 import { users } from "./db/auth.schema";
 import { parseEmail } from "./lib/email-parser";
+import { computeConversationId, externalsOnly } from "./lib/conversation-id";
 import { cancelSequencesForPerson } from "./lib/cancel-sequence";
 import {
   MAX_ADMIN_FANOUT,
@@ -148,6 +150,32 @@ export async function handleEmail(
     }
   }
 
+  // Compute the conversation_id, if this is a multi-participant thread.
+  // External participants = the sender + everyone on the Cc line, minus
+  // any addresses that match one of our sender_identities (those are
+  // "internal" team members and don't change the group identity).
+  const ourDomains = await (async () => {
+    const rows = await db
+      .select({ email: senderIdentities.email })
+      .from(senderIdentities);
+    return Array.from(
+      new Set(
+        rows
+          .map((r) => {
+            const at = r.email.lastIndexOf("@");
+            return at === -1 ? "" : r.email.slice(at + 1).toLowerCase();
+          })
+          .filter(Boolean),
+      ),
+    );
+  })();
+  const allParticipants = [
+    parsed.from.address,
+    ...parsed.cc.map((c) => c.email),
+  ];
+  const externals = externalsOnly(allParticipants, ourDomains);
+  const conversationId = await computeConversationId(parsed.to, externals);
+
   // Insert email (with rewritten HTML and auth results)
   await db.insert(emails).values({
     id: emailId,
@@ -163,6 +191,7 @@ export async function handleEmail(
     dmarc: parsed.auth.dmarc,
     isRead: 0,
     cc: parsed.cc.length > 0 ? JSON.stringify(parsed.cc) : null,
+    conversationId,
     receivedAt: now,
     createdAt: now,
   });

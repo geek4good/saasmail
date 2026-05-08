@@ -11,6 +11,7 @@ import { hashKey } from "./lib/crypto";
 import { handleEmail } from "./email-handler";
 import { peopleRouter } from "./routers/people-router";
 import { emailsRouter } from "./routers/emails-router";
+import { conversationsRouter } from "./routers/conversations-router";
 import { sendRouter } from "./routers/send-router";
 import { attachmentsRouter } from "./routers/attachments-router";
 import { statsRouter } from "./routers/stats-router";
@@ -187,6 +188,7 @@ const requireAdmin: MiddlewareHandler<{
 // API Routes
 app.route("/api/people", peopleRouter);
 app.route("/api/emails", emailsRouter);
+app.route("/api/conversations", conversationsRouter);
 app.route("/api/send", sendRouter);
 app.route("/api/attachments", attachmentsRouter);
 app.route("/api/stats", statsRouter);

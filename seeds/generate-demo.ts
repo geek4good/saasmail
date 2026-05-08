@@ -10,6 +10,7 @@
  * Run:  npx tsx seeds/generate-demo.ts
  * Then: yarn db:seed:dev
  */
+import { createHash } from "node:crypto";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -229,6 +230,628 @@ const EXTERNAL_COLLABORATORS: CcEntry[] = [
   { email: "marcus.cohen@northwind.co", name: "Marcus Cohen" },
   { email: "yuki.sato@orbis.health", name: "Yuki Sato" },
 ];
+
+// ---------------------------------------------------------------------------
+// GROUP_THREADS — explicit multi-participant fixtures. Each one becomes a
+// chain of inbound + outbound messages stamped with the same conversation_id.
+//
+// `from` = index into `externals` for an inbound message, or "us" for an
+// outbound reply from our team. `roster` overrides who's CC'd on THIS
+// specific message; default roster = all other externals + internalCcs.
+// ---------------------------------------------------------------------------
+type GroupExternal = { email: string; name: string };
+type GroupMessage = {
+  from: number | "us";
+  text: string;
+  daysAgo: number;
+  roster?: number[]; // indexes into externals to CC on this message specifically
+};
+type GroupThread = {
+  inbox: string;
+  externals: GroupExternal[];
+  internalCcs: string[]; // emails picked from INTERNAL_TEAM
+  subject: string;
+  messages: GroupMessage[];
+};
+
+const GROUP_THREADS: GroupThread[] = [
+  // 1) Billing dispute — invoice line items
+  {
+    inbox: "billing@example.com",
+    externals: [
+      { email: "elena.varga@acme.co", name: "Elena Varga" },
+      { email: "tomas.reiner@acme.co", name: "Tomas Reiner" },
+      { email: "fiona.boyle@legal.acme.co", name: "Fiona Boyle" },
+    ],
+    internalCcs: ["pavel@example.com", "lin@example.com"],
+    subject: "September invoice — line item discrepancy",
+    messages: [
+      {
+        from: 0,
+        text: "Hi team — our September invoice came in $1,840 above last month and we can't reconcile the overage line. Can someone walk us through how the seat-add prorations were calculated? Looping in Tomas from finance.",
+        daysAgo: 12,
+      },
+      {
+        from: 1,
+        text: "Adding context from finance: we added 12 seats on Sep 9 and 6 more on Sep 22. Both moves should have prorated against the annual term, not been billed at full month.",
+        daysAgo: 12,
+      },
+      {
+        from: "us",
+        text: "Thanks both — pulling the breakdown now. Quick check: is your plan on the legacy annual rate or the Sep 1 refresh? That changes the proration formula.",
+        daysAgo: 11,
+      },
+      {
+        from: 0,
+        text: "Legacy annual, signed in March. Happy to forward the contract if helpful.",
+        daysAgo: 11,
+      },
+      {
+        from: "us",
+        text: "Got it — confirmed the seat-adds were billed under the new formula by mistake. I'm issuing a credit of $1,290 to bring this in line with the legacy rate. Should appear on next month's invoice.",
+        daysAgo: 9,
+      },
+      {
+        from: 2,
+        text: "Hi all — Fiona from Acme legal, just looped in. Before we close this out, can we get the credit memo in writing? Our auditors flag verbal credits.",
+        daysAgo: 9,
+        // Fiona joins late — roster expands.
+        roster: [0, 1, 2],
+      },
+      {
+        from: "us",
+        text: "Of course. Issuing the credit memo today; you'll get it as a PDF attachment from finance@. Sorry about the runaround.",
+        daysAgo: 8,
+        roster: [0, 1, 2],
+      },
+      {
+        from: 0,
+        text: "Received and confirmed. Thanks for the quick turnaround — closing this out on our end.",
+        daysAgo: 7,
+        roster: [0, 1, 2],
+      },
+    ],
+  },
+  // 2) Legal review — DPA redlines
+  {
+    inbox: "sales@example.com",
+    externals: [
+      { email: "harriet.cole@hooli.com", name: "Harriet Cole" },
+      { email: "darius.weiss@hooli.com", name: "Darius Weiss" },
+      { email: "marina.flores@legal.acme.co", name: "Marina Flores" },
+    ],
+    internalCcs: ["ren@example.com"],
+    subject: "DPA redlines for Hooli expansion",
+    messages: [
+      {
+        from: 0,
+        text: "Sending over our redlines on the DPA for the expansion order. Most of the changes are in section 4 (sub-processors) and section 9 (audit rights). Marina from outside counsel is CC'd.",
+        daysAgo: 14,
+      },
+      {
+        from: "us",
+        text: "Thanks Harriet — taking a look with our legal team today. First read: section 4 looks fine, section 9 we'll likely push back on the unannounced audit clause.",
+        daysAgo: 14,
+      },
+      {
+        from: 2,
+        text: "Hi — Marina here. The unannounced audit clause is non-negotiable for our regulated customers, but we can scope it to a 30-day notice for non-regulated tenants. Would that work?",
+        daysAgo: 13,
+      },
+      {
+        from: "us",
+        text: "30-day notice works on our side. We'll mark up section 9 with that compromise and send it back tomorrow.",
+        daysAgo: 13,
+      },
+      {
+        from: 1,
+        text: "Jumping in — Darius from procurement at Hooli. Once legal aligns, I'll need the final DPA in our vendor portal before we can countersign the order form. Just flagging the dependency.",
+        daysAgo: 12,
+        // Darius added — roster grows.
+        roster: [0, 1, 2],
+      },
+      {
+        from: "us",
+        text: "Acknowledged — we'll upload directly to your portal once it's signed. Latest redline attached.",
+        daysAgo: 11,
+        roster: [0, 1, 2],
+      },
+      {
+        from: 2,
+        text: "Reviewed. One small edit on the sub-processor list (we're flagging Resend as a notification trigger only, not a primary processor). Otherwise good to sign.",
+        daysAgo: 9,
+        roster: [0, 1, 2],
+      },
+      {
+        from: "us",
+        text: "Edit accepted. Sending the clean version for signature now.",
+        daysAgo: 8,
+        roster: [0, 1, 2],
+      },
+      {
+        from: 0,
+        text: "Signed and uploaded. Order form follows in a separate thread.",
+        daysAgo: 6,
+        roster: [0, 1, 2],
+      },
+    ],
+  },
+  // 3) Feature negotiation — SAML SSO scope
+  {
+    inbox: "sales@example.com",
+    externals: [
+      { email: "rajiv.kapur@piedpiper.ai", name: "Rajiv Kapur" },
+      { email: "sienna.holt@piedpiper.ai", name: "Sienna Holt" },
+      { email: "noor.haddad@piedpiper.ai", name: "Noor Haddad" },
+    ],
+    internalCcs: ["maya@example.com", "diego@example.com"],
+    subject: "SAML SSO requirements for Q1 rollout",
+    messages: [
+      {
+        from: 0,
+        text: "We're targeting a Q1 rollout. Need to confirm SAML SSO covers SCIM provisioning, JIT user creation, and per-inbox group mapping. Sienna and Noor from our security team are CC'd.",
+        daysAgo: 18,
+      },
+      {
+        from: "us",
+        text: "All three are supported on Enterprise. SCIM via Okta/Azure, JIT is on by default, and group mapping is per-tenant configurable. Happy to walk through the admin UI on a call.",
+        daysAgo: 18,
+      },
+      {
+        from: 1,
+        text: "Quick clarification on JIT: when a user is deprovisioned upstream, how fast does access revoke on your side? We need < 5 minute SLA for SOC 2.",
+        daysAgo: 17,
+      },
+      {
+        from: "us",
+        text: "SCIM events propagate within 2 minutes typically, hard cap is 5 minutes by SLA. We can share the SOC 2 Type II report under NDA if helpful.",
+        daysAgo: 17,
+      },
+      {
+        from: 2,
+        text: "Yes please on the SOC 2 report. Also — what's the disaster-recovery story for the SAML metadata itself? If your IdP-facing endpoint goes down, do we get cached metadata?",
+        daysAgo: 16,
+      },
+      {
+        from: "us",
+        text: "Metadata is cached at the edge with a 24h TTL. If the origin is unreachable, in-flight sessions stay valid until natural expiry. Sending the SOC 2 report via secure share now.",
+        daysAgo: 15,
+      },
+      {
+        from: 0,
+        text: "Received. Looks good on our end. One more thing — can we get a sandbox tenant to test the SCIM bridge before we cutover?",
+        daysAgo: 13,
+      },
+      {
+        from: "us",
+        text: "Sandbox is provisioned: pp-sandbox.example.com. Credentials in the secure share. Ping us if you hit any issues.",
+        daysAgo: 12,
+      },
+      {
+        from: 1,
+        text: "Tested SCIM — works. We're moving forward with the Q1 plan. Will send the signed order form tomorrow.",
+        daysAgo: 8,
+      },
+    ],
+  },
+  // 4) Procurement check — vendor security questionnaire
+  {
+    inbox: "sales@example.com",
+    externals: [
+      { email: "priya.singh@procurement.globex.io", name: "Priya Singh" },
+      { email: "kenji.yamada@globex.io", name: "Kenji Yamada" },
+    ],
+    internalCcs: ["pavel@example.com"],
+    subject: "Vendor security questionnaire",
+    messages: [
+      {
+        from: 0,
+        text: "Hi — Priya from Globex procurement. Attaching our vendor security questionnaire (97 questions, sorry). Need it back by EOW to keep the renewal on track.",
+        daysAgo: 9,
+      },
+      {
+        from: "us",
+        text: "Got it — most of these we can copy from our existing trust portal. Will turn around by Thursday.",
+        daysAgo: 9,
+      },
+      {
+        from: 1,
+        text: "Adding our InfoSec lead Kenji to the thread. He'll review the responses before they go to legal.",
+        daysAgo: 8,
+        roster: [0, 1],
+      },
+      {
+        from: "us",
+        text: "Welcome Kenji. Filled questionnaire attached. Highlights: SOC 2 Type II current, ISO 27001 in progress (cert expected Q2), pen test report from August available under NDA.",
+        daysAgo: 7,
+        roster: [0, 1],
+      },
+      {
+        from: 1,
+        text: "Reviewed. Two follow-ups: question 47 on encryption-at-rest needs the KMS provider name, and question 82 on incident response wants the on-call rotation size.",
+        daysAgo: 6,
+        roster: [0, 1],
+      },
+      {
+        from: "us",
+        text: "47: AWS KMS, customer-managed keys available on Enterprise. 82: 6-engineer on-call rotation, 24/7 coverage with < 15min P1 ack SLA.",
+        daysAgo: 6,
+        roster: [0, 1],
+      },
+      {
+        from: 0,
+        text: "All clear from procurement side. Renewal is good to go.",
+        daysAgo: 4,
+      },
+    ],
+  },
+  // 5) Outage post-mortem follow-up
+  {
+    inbox: "support@example.com",
+    externals: [
+      { email: "alec.briggs@northwind.co", name: "Alec Briggs" },
+      { email: "irina.popov@northwind.co", name: "Irina Popov" },
+      { email: "mateo.santos@northwind.co", name: "Mateo Santos" },
+    ],
+    internalCcs: ["sam@example.com"],
+    subject: "Follow-up on Tuesday's outage — RCA needed",
+    messages: [
+      {
+        from: 0,
+        text: "We got hit by Tuesday's 23-minute outage and lost about 4,000 inbound messages from a partner integration. Need a full RCA and a plan to prevent recurrence before our next exec review.",
+        daysAgo: 5,
+      },
+      {
+        from: "us",
+        text: "Understood — sorry for the impact. RCA is being drafted now; expect it by Friday. Re: the lost messages: those should be in our retry queue, will confirm and replay them today.",
+        daysAgo: 5,
+      },
+      {
+        from: 1,
+        text: "Thanks. Adding Mateo from our partner engineering team — he'll be the technical contact for the replay.",
+        daysAgo: 5,
+        roster: [0, 1, 2],
+      },
+      {
+        from: "us",
+        text: "Replay completed at 14:32 UTC. 3,841 messages restored, 159 were over the 7-day retry window and we're investigating those manually.",
+        daysAgo: 4,
+        roster: [0, 1, 2],
+      },
+      {
+        from: 2,
+        text: "Confirmed receipt of the 3,841. For the 159 — can you share which sender domains they came from? We can cross-reference against our partner logs.",
+        daysAgo: 4,
+        roster: [0, 1, 2],
+      },
+      {
+        from: "us",
+        text: "Sent the breakdown via secure share. Most are from two partners; one partner's retry config was overly aggressive and exhausted before our backend recovered.",
+        daysAgo: 3,
+        roster: [0, 1, 2],
+      },
+      {
+        from: 0,
+        text: "RCA looks thorough. Approving the incident as resolved on our side. Will share the summary with our exec team.",
+        daysAgo: 2,
+      },
+    ],
+  },
+  // 6) Onboarding kick-off (3 externals + 1 internal)
+  {
+    inbox: "hello@example.com",
+    externals: [
+      { email: "jana.kowalski@stark.industries", name: "Jana Kowalski" },
+      { email: "ravi.menon@stark.industries", name: "Ravi Menon" },
+      { email: "lucia.fernandez@stark.industries", name: "Lucia Fernandez" },
+    ],
+    internalCcs: ["maya@example.com"],
+    subject: "Stark onboarding — kickoff next steps",
+    messages: [
+      {
+        from: 0,
+        text: "Excited to get started. Looping in Ravi (engineering lead) and Lucia (ops). Can we schedule a kickoff next week and get the migration runbook?",
+        daysAgo: 11,
+      },
+      {
+        from: "us",
+        text: "Welcome! Sent a calendar hold for Tuesday 10am PT. Runbook attached — it covers the three migration phases and the rollback path.",
+        daysAgo: 11,
+      },
+      {
+        from: 1,
+        text: "Quick technical question — does the runbook assume single-region or are you moving us to the multi-region setup from day one?",
+        daysAgo: 10,
+      },
+      {
+        from: "us",
+        text: "Single-region for phase 1 (US-East), multi-region added in phase 3 once we've validated the inbound flow. Splitting that out keeps the rollback simple.",
+        daysAgo: 10,
+      },
+      {
+        from: 2,
+        text: "From the ops side: who owns DNS during the cutover? We can either do it ourselves or hand off — depends on your usual process.",
+        daysAgo: 9,
+      },
+      {
+        from: "us",
+        text: "Either works. If you keep DNS, we'll provide the records and timing; if you hand off, we manage it via a temporary delegation. Most enterprise customers prefer to keep it.",
+        daysAgo: 9,
+      },
+      {
+        from: 0,
+        text: "Let's keep DNS on our side. See you Tuesday.",
+        daysAgo: 8,
+      },
+    ],
+  },
+  // 7) Feature request triage — chat-mode rollout
+  {
+    inbox: "support@example.com",
+    externals: [
+      { email: "deepa.rao@umbrella.med", name: "Deepa Rao" },
+      { email: "hugo.lefevre@umbrella.med", name: "Hugo Lefevre" },
+      { email: "anika.osei@umbrella.med", name: "Anika Osei" },
+      { email: "petr.zelinka@umbrella.med", name: "Petr Zelinka" },
+    ],
+    internalCcs: ["lin@example.com", "diego@example.com"],
+    subject: "Chat-mode UI for support inboxes — feedback",
+    messages: [
+      {
+        from: 0,
+        text: "We've been on the chat-mode beta for a week and have collated feedback from our 14-person support team. Top three asks: keyboard-only navigation, per-conversation sound toggles, and a way to surface roster changes more clearly.",
+        daysAgo: 16,
+      },
+      {
+        from: 1,
+        text: "Adding to that — the avatar overlap at 5+ participants gets visually noisy. We'd love an option to collapse to 'X others' after the first three.",
+        daysAgo: 16,
+      },
+      {
+        from: "us",
+        text: "Great feedback — keyboard nav is on the roadmap for next sprint, sound toggles we can ship behind a flag this week, and roster-change UI is shipping today actually (RosterDiffNotice component, will appear inline).",
+        daysAgo: 15,
+      },
+      {
+        from: 2,
+        text: "Anika here, design lead. Curious what the roster-change UI looks like — is it a banner, a chip, or inline text? Happy to share our redlines if you want a second opinion.",
+        daysAgo: 15,
+      },
+      {
+        from: "us",
+        text: "Inline pill above the message that triggered the change ('Joined: X. Left: Y'). Sending you a Loom of it now.",
+        daysAgo: 14,
+      },
+      {
+        from: 3,
+        text: "Petr from engineering — when keyboard nav ships, can we get the keymap configurable? Half my team is on Vim bindings, half on default.",
+        daysAgo: 13,
+        roster: [0, 1, 2, 3],
+      },
+      {
+        from: "us",
+        text: "Configurable keymap is a yes — we'll ship default + Vim out of the box, with a JSON override for power users.",
+        daysAgo: 13,
+        roster: [0, 1, 2, 3],
+      },
+      {
+        from: 2,
+        text: "Saw the Loom. The pill placement is great. One nit: the icon for 'left' reads a little aggressive — we'd suggest a softer chevron-out instead of an X.",
+        daysAgo: 12,
+        roster: [0, 1, 2, 3],
+      },
+      {
+        from: "us",
+        text: "Good call, swapping the icon. Should be live in tomorrow's deploy.",
+        daysAgo: 11,
+        roster: [0, 1, 2, 3],
+      },
+      {
+        from: 0,
+        text: "Thanks all. We'll keep funneling feedback as we expand the rollout to more reps.",
+        daysAgo: 9,
+      },
+    ],
+  },
+  // 8) Procurement / RFP — multi-vendor evaluation
+  {
+    inbox: "sales@example.com",
+    externals: [
+      { email: "priya.singh@procurement.globex.io", name: "Priya Singh" },
+      { email: "olu.adebayo@globex.io", name: "Olu Adebayo" },
+      { email: "tariq.khan@legal.acme.co", name: "Tariq Khan" },
+    ],
+    internalCcs: ["pavel@example.com"],
+    subject: "RFP response — Globex / Acme joint deployment",
+    messages: [
+      {
+        from: 0,
+        text: "Joint RFP for the Globex/Acme deployment. We're evaluating three vendors. Tariq from Acme legal is leading the contract review side; Olu is the technical evaluator on Globex's end.",
+        daysAgo: 21,
+      },
+      {
+        from: "us",
+        text: "Thanks for including us. Will send our full RFP response by next Friday — let me know if there are any sections you'd like us to prioritize.",
+        daysAgo: 21,
+      },
+      {
+        from: 1,
+        text: "Section 4 (architecture) and section 6 (data residency) are the deciding factors for us. Everything else we can read async.",
+        daysAgo: 20,
+      },
+      {
+        from: "us",
+        text: "Noted — we'll lead with those two. Quick question for residency: do you have a hard requirement for EU-only or is EU-primary with US-failover acceptable?",
+        daysAgo: 20,
+      },
+      {
+        from: 2,
+        text: "From legal: EU-primary with US-failover is acceptable as long as the failover is documented and triggers an in-region notification. GDPR Art. 28(3) compliance is the bar.",
+        daysAgo: 19,
+      },
+      {
+        from: "us",
+        text: "All set on Art. 28(3). RFP response delivered today. Sections 4 and 6 are the first 18 pages.",
+        daysAgo: 14,
+      },
+      {
+        from: 1,
+        text: "Reviewed section 4. The architecture diagram on page 11 has a discrepancy with the description on page 9 — can you clarify whether ingress is single or multi-tenant on the inbound side?",
+        daysAgo: 13,
+      },
+      {
+        from: "us",
+        text: "Multi-tenant ingress with per-tenant routing — page 9 description is correct, the diagram label was stale. Updated diagram attached.",
+        daysAgo: 12,
+      },
+      {
+        from: 0,
+        text: "We've narrowed it to two finalists; you're one of them. Final pitch slot is next week, Tuesday or Thursday.",
+        daysAgo: 7,
+      },
+      {
+        from: "us",
+        text: "Tuesday works. We'll bring our solutions architect and have a live demo of the multi-region setup.",
+        daysAgo: 7,
+      },
+    ],
+  },
+  // 9) Partnership / co-marketing
+  {
+    inbox: "hello@example.com",
+    externals: [
+      { email: "wren.callahan@piedpiper.ai", name: "Wren Callahan" },
+      { email: "soren.bakke@hooli.com", name: "Soren Bakke" },
+    ],
+    internalCcs: ["maya@example.com", "ren@example.com"],
+    subject: "Co-marketing webinar — joint Q&A format",
+    messages: [
+      {
+        from: 0,
+        text: "Wanted to float a co-marketing idea: a joint webinar between us, Hooli, and you on the topic of 'modern email infrastructure for AI-native teams.' Soren from Hooli is interested and CC'd.",
+        daysAgo: 19,
+      },
+      {
+        from: 1,
+        text: "Hooli's in if the format is panel + audience Q&A rather than alternating slides. Speakers are easier to recruit for that.",
+        daysAgo: 18,
+      },
+      {
+        from: "us",
+        text: "Love the panel format. Proposing 4 panelists (one per company plus a moderator), 30 minutes panel, 20 minutes Q&A, 10 minutes wrap. Mid-November target?",
+        daysAgo: 18,
+      },
+      {
+        from: 0,
+        text: "Mid-November works. Wren can moderate if that's helpful — I've MC'd two of these for AI conferences and it usually frees the company panelists to be more candid.",
+        daysAgo: 17,
+      },
+      {
+        from: "us",
+        text: "Sold. Drafting the run-of-show this week and will share for review. We'll also handle the registration page.",
+        daysAgo: 16,
+      },
+      {
+        from: 1,
+        text: "Hooli will cover paid promotion in our newsletter (~80k subscribers). Can we get a co-branded landing page or are we sending traffic to a unified one?",
+        daysAgo: 15,
+      },
+      {
+        from: "us",
+        text: "Unified landing with all three logos and per-company UTM tags so we can each track signups. Fair?",
+        daysAgo: 15,
+      },
+      {
+        from: 0,
+        text: "Fair. Looking forward to it.",
+        daysAgo: 14,
+      },
+    ],
+  },
+  // 10) Migration / vendor consolidation
+  {
+    inbox: "sales@example.com",
+    externals: [
+      { email: "elena.varga@acme.co", name: "Elena Varga" },
+      { email: "yuki.sato@orbis.health", name: "Yuki Sato" },
+      { email: "bo.westwood@vandelay.imp", name: "Bo Westwood" },
+    ],
+    internalCcs: ["sam@example.com"],
+    subject: "Consolidating three Acme business units onto one tenant",
+    messages: [
+      {
+        from: 0,
+        text: "We're consolidating Acme, Orbis, and Vandelay (recent acquisitions) onto a single tenant. Each has its own existing email setup — what does a phased migration look like?",
+        daysAgo: 24,
+      },
+      {
+        from: "us",
+        text: "Three options: (1) lift-and-shift each in turn, (2) parallel-run with gradual cutover, (3) net-new tenant with read-only archives. Most customers in your shape pick (2).",
+        daysAgo: 24,
+      },
+      {
+        from: 1,
+        text: "Yuki here from Orbis. Our compliance team needs the read-only archive to be HIPAA-eligible. Does option 2 preserve that?",
+        daysAgo: 23,
+      },
+      {
+        from: "us",
+        text: "Yes — the archive lives on the same HIPAA-eligible tier as production. We sign a BAA covering both.",
+        daysAgo: 22,
+      },
+      {
+        from: 2,
+        text: "Bo from Vandelay. Our setup is small (12 users) so I assume we go last? Our domain is also currently MX'd to a different provider — not sure how that affects sequencing.",
+        daysAgo: 21,
+      },
+      {
+        from: "us",
+        text: "Vandelay last makes sense. The MX swap is independent of consolidation — we'll script the cutover so it's ~2 minutes of TTL-bounded propagation.",
+        daysAgo: 20,
+      },
+      {
+        from: 0,
+        text: "Phasing approved internally. Acme first (60 users) starting next month, Orbis 4 weeks later, Vandelay 4 weeks after that.",
+        daysAgo: 16,
+      },
+      {
+        from: "us",
+        text: "Locked in. Sending project plan + per-phase runbook. Kickoff call for Acme phase next Wednesday.",
+        daysAgo: 15,
+      },
+      {
+        from: 1,
+        text: "Confirmed for the Orbis phase. Will pre-stage our HIPAA addendum so it's signed before our cutover.",
+        daysAgo: 12,
+      },
+      {
+        from: 2,
+        text: "Vandelay confirmed for the final phase. I'll loop in our IT once we get within a month of cutover.",
+        daysAgo: 10,
+      },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// conversation_id — same algorithm as worker/src/lib/conversation-id.ts.
+// Computed for the seed because we can't await crypto.subtle here in a
+// synchronous code path; node:crypto's createHash is the equivalent.
+// ---------------------------------------------------------------------------
+const INTERNAL_DOMAIN = "example.com";
+
+function computeConversationIdSync(
+  inbox: string,
+  externals: string[],
+): string | null {
+  const norm = Array.from(
+    new Set(externals.map((e) => e.trim().toLowerCase()).filter(Boolean)),
+  ).sort();
+  if (norm.length < 2) return null;
+  const key = `${inbox.trim().toLowerCase()}::${norm.join("|")}`;
+  const hex = createHash("sha256").update(key).digest("hex");
+  return `c_${hex.slice(0, 16)}`;
+}
 
 // ---------------------------------------------------------------------------
 // Email content libraries — keyed by inbox so subjects/bodies match the
@@ -513,6 +1136,7 @@ interface Email {
   isRead: 0 | 1;
   receivedOffsetSec: number;
   cc?: CcEntry[];
+  conversationId?: string | null;
 }
 
 interface SentReply {
@@ -526,6 +1150,7 @@ interface SentReply {
   inReplyTo: string | null;
   sentOffsetSec: number;
   cc?: CcEntry[];
+  conversationId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -799,19 +1424,212 @@ function buildEmails(people: Person[]): {
 }
 
 // ---------------------------------------------------------------------------
+// Build group threads — produces extra people, emails, and sent replies
+// that share a conversation_id per thread. IDs are namespaced so they
+// don't collide with the main 1-on-1 generator.
+// ---------------------------------------------------------------------------
+interface GroupBuildResult {
+  groupPeople: Person[];
+  groupEmails: Email[];
+  groupSent: SentReply[];
+  threadConversationIds: string[];
+  groupMessageCounts: number[];
+}
+
+function buildGroupThreads(
+  startEmailIdx: number,
+  startSentIdx: number,
+): GroupBuildResult {
+  const groupPeople: Person[] = [];
+  const groupEmails: Email[] = [];
+  const groupSent: SentReply[] = [];
+  const threadConversationIds: string[] = [];
+  const groupMessageCounts: number[] = [];
+
+  // Allocate one Person per unique external email across all GROUP_THREADS,
+  // numbered p_g00, p_g01, ... in the order they're first encountered.
+  const personByEmail = new Map<string, Person>();
+  let pgIdx = 0;
+  for (const t of GROUP_THREADS) {
+    for (const ext of t.externals) {
+      const key = ext.email.toLowerCase();
+      if (personByEmail.has(key)) continue;
+      const id = `p_g${pgIdx.toString().padStart(2, "0")}`;
+      pgIdx++;
+      const person: Person = {
+        id,
+        email: ext.email,
+        name: ext.name,
+        inboxes: [t.inbox],
+        createdOffsetDays: 30,
+      };
+      personByEmail.set(key, person);
+      groupPeople.push(person);
+    }
+  }
+
+  let eId = startEmailIdx;
+  let sId = startSentIdx;
+
+  for (const t of GROUP_THREADS) {
+    const externalEmails = t.externals.map((e) => e.email);
+    const conversationId = computeConversationIdSync(t.inbox, externalEmails);
+    if (!conversationId) {
+      throw new Error(
+        `GROUP_THREAD with inbox=${t.inbox} produced null conversation_id (need >= 2 externals)`,
+      );
+    }
+    threadConversationIds.push(conversationId);
+    groupMessageCounts.push(t.messages.length);
+
+    // Track the most-recent external sender for outbound `to` selection.
+    let lastExternalIdx = 0;
+
+    for (let mi = 0; mi < t.messages.length; mi++) {
+      const m = t.messages[mi];
+
+      // Determine the roster (external indexes) for this message: defaults to
+      // "all externals other than the sender (if external)".
+      const allExtIdx = t.externals.map((_, idx) => idx);
+      let messageExtRoster: number[];
+      if (m.roster) {
+        messageExtRoster = m.roster;
+      } else if (m.from === "us") {
+        messageExtRoster = allExtIdx;
+      } else {
+        messageExtRoster = allExtIdx.filter((idx) => idx !== m.from);
+      }
+
+      // Internal CCs roster: same on every message (no per-message override).
+      const internalRoster = t.internalCcs;
+
+      // Build cc entries — exclude the sender and exclude the outbound `to`
+      // recipient (computed below for outbound).
+      const buildCc = (excludeEmails: Set<string>): CcEntry[] => {
+        const cc: CcEntry[] = [];
+        for (const idx of messageExtRoster) {
+          const ext = t.externals[idx];
+          if (excludeEmails.has(ext.email.toLowerCase())) continue;
+          cc.push({ email: ext.email, name: ext.name });
+        }
+        for (const intEmail of internalRoster) {
+          if (excludeEmails.has(intEmail.toLowerCase())) continue;
+          const intMember = INTERNAL_TEAM.find((i) => i.email === intEmail);
+          cc.push({
+            email: intEmail,
+            name: intMember?.name ?? null,
+          });
+        }
+        return cc;
+      };
+
+      // Time spread — same as 1-on-1 path: derive offset from daysAgo with
+      // a small reproducible jitter from `rand`.
+      const offsetSec = Math.floor(m.daysAgo * 86400) + randInt(0, 86399);
+
+      // sqlEscape happens at render time everywhere else, so keep the raw
+      // subject here and let the chunked-INSERT loop escape it.
+      const rawSubject = mi === 0 ? t.subject : `Re: ${t.subject}`;
+
+      if (m.from === "us") {
+        // Outbound. `to` = most-recent external sender's email; cc = all
+        // others (other externals + internalCcs).
+        const toExt = t.externals[lastExternalIdx];
+        const cc = buildCc(new Set([toExt.email.toLowerCase()]));
+        const text = m.text;
+        groupSent.push({
+          id: `s_${sId.toString().padStart(4, "0")}`,
+          personId: personByEmail.get(toExt.email.toLowerCase())!.id,
+          fromAddress: t.inbox,
+          to: toExt.email,
+          subject: rawSubject,
+          bodyHtml: bodyHtml(text),
+          bodyText: text,
+          inReplyTo: null,
+          sentOffsetSec: offsetSec,
+          cc: cc.length > 0 ? cc : undefined,
+          conversationId,
+        });
+        sId++;
+      } else {
+        // Inbound. sender = externals[m.from], recipient = inbox, cc = all
+        // other externals on roster + internal ccs.
+        const sender = t.externals[m.from];
+        const senderPerson = personByEmail.get(sender.email.toLowerCase())!;
+        lastExternalIdx = m.from;
+        const cc = buildCc(
+          new Set([sender.email.toLowerCase(), t.inbox.toLowerCase()]),
+        );
+        const isRecent = m.daysAgo < 3;
+        const isRead: 0 | 1 = isRecent
+          ? chance(0.5)
+            ? 0
+            : 1
+          : chance(0.85)
+            ? 1
+            : 0;
+        const text = m.text;
+        groupEmails.push({
+          id: `e_${eId.toString().padStart(4, "0")}`,
+          personId: senderPerson.id,
+          recipient: t.inbox,
+          subject: rawSubject,
+          bodyHtml: bodyHtml(text),
+          bodyText: text,
+          isRead,
+          receivedOffsetSec: offsetSec,
+          cc: cc.length > 0 ? cc : undefined,
+          conversationId,
+        });
+        eId++;
+      }
+    }
+  }
+
+  return {
+    groupPeople,
+    groupEmails,
+    groupSent,
+    threadConversationIds,
+    groupMessageCounts,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Render SQL
 // ---------------------------------------------------------------------------
 interface RenderResult {
   sql: string;
   attachments: Attachment[];
   rosterChangePeopleIds: string[];
-  stats: { people: number; emails: number; sent: number; attachments: number };
+  groupConversationIds: string[];
+  groupMessageCounts: number[];
+  groupPersonIds: string[];
+  stats: {
+    people: number;
+    emails: number;
+    sent: number;
+    attachments: number;
+    groupPeople: number;
+    groupThreads: number;
+    groupMessages: number;
+  };
 }
 
 function renderSql(): RenderResult {
   const people = buildPeople(100);
   const { emails, sent, attachments, rosterChangePeopleIds } =
     buildEmails(people);
+
+  // Append group threads after the 1-on-1 generation. Pass the next
+  // available email/sent indexes so id namespaces stay disjoint.
+  const startEmailIdx = emails.length;
+  const startSentIdx = sent.length;
+  const group = buildGroupThreads(startEmailIdx, startSentIdx);
+  // Merge group rows into the main arrays so the chunked INSERTs cover them.
+  const allPeople = [...people, ...group.groupPeople];
+  for (const e of group.groupEmails) emails.push(e);
+  for (const s of group.groupSent) sent.push(s);
 
   const lines: string[] = [];
 
@@ -820,7 +1638,10 @@ function renderSql(): RenderResult {
   );
   lines.push("-- Run: yarn db:seed:dev (after re-running the generator).");
   lines.push(
-    `-- Stats: ${people.length} people, ${emails.length} emails, ${sent.length} sent replies, ${attachments.length} attachments.`,
+    `-- Stats: ${allPeople.length} people, ${emails.length} emails, ${sent.length} sent replies, ${attachments.length} attachments.`,
+  );
+  lines.push(
+    `-- Group threads: ${GROUP_THREADS.length} (${group.groupMessageCounts.join(" + ")} = ${group.groupEmails.length + group.groupSent.length} messages).`,
   );
   lines.push("");
   lines.push("DELETE FROM sequence_emails;");
@@ -849,12 +1670,12 @@ function renderSql(): RenderResult {
   );
   lines.push("");
 
-  // People
+  // People (1-on-1 generator + group-thread externals).
   lines.push(
     "INSERT OR REPLACE INTO people (id, email, name, last_email_at, unread_count, total_count, created_at, updated_at) VALUES",
   );
   lines.push(
-    people
+    allPeople
       .map(
         (p) =>
           `  ('${p.id}', '${sqlEscape(p.email)}', '${sqlEscape(p.name)}', 0, 0, 0, (CAST(strftime('%s','now') AS INTEGER) - 86400 * ${p.createdOffsetDays}), CAST(strftime('%s','now') AS INTEGER))`,
@@ -868,13 +1689,13 @@ function renderSql(): RenderResult {
   for (let off = 0; off < emails.length; off += CHUNK) {
     const chunk = emails.slice(off, off + CHUNK);
     lines.push(
-      "INSERT OR REPLACE INTO emails (id, person_id, recipient, subject, body_html, body_text, raw_headers, message_id, spf, dkim, dmarc, is_read, received_at, created_at, cc) VALUES",
+      "INSERT OR REPLACE INTO emails (id, person_id, recipient, subject, body_html, body_text, raw_headers, message_id, spf, dkim, dmarc, is_read, received_at, created_at, cc, conversation_id) VALUES",
     );
     lines.push(
       chunk
         .map(
           (e) =>
-            `  ('${e.id}', '${e.personId}', '${e.recipient}', '${sqlEscape(e.subject)}', '${e.bodyHtml}', '${sqlEscape(e.bodyText)}', '{}', '<${e.id}@example.test>', 'pass', 'pass', 'pass', ${e.isRead}, (CAST(strftime('%s','now') AS INTEGER) - ${e.receivedOffsetSec}), (CAST(strftime('%s','now') AS INTEGER) - ${e.receivedOffsetSec}), ${e.cc ? ccToJson(e.cc) : "NULL"})`,
+            `  ('${e.id}', '${e.personId}', '${e.recipient}', '${sqlEscape(e.subject)}', '${e.bodyHtml}', '${sqlEscape(e.bodyText)}', '{}', '<${e.id}@example.test>', 'pass', 'pass', 'pass', ${e.isRead}, (CAST(strftime('%s','now') AS INTEGER) - ${e.receivedOffsetSec}), (CAST(strftime('%s','now') AS INTEGER) - ${e.receivedOffsetSec}), ${e.cc ? ccToJson(e.cc) : "NULL"}, ${e.conversationId ? `'${e.conversationId}'` : "NULL"})`,
         )
         .join(",\n") + ";",
     );
@@ -886,13 +1707,13 @@ function renderSql(): RenderResult {
     for (let off = 0; off < sent.length; off += CHUNK) {
       const chunk = sent.slice(off, off + CHUNK);
       lines.push(
-        "INSERT OR REPLACE INTO sent_emails (id, person_id, to_address, from_address, subject, body_html, body_text, in_reply_to, status, sent_at, created_at, cc) VALUES",
+        "INSERT OR REPLACE INTO sent_emails (id, person_id, to_address, from_address, subject, body_html, body_text, in_reply_to, status, sent_at, created_at, cc, conversation_id) VALUES",
       );
       lines.push(
         chunk
           .map(
             (s) =>
-              `  ('${s.id}', '${s.personId}', '${sqlEscape(s.to)}', '${s.fromAddress}', '${sqlEscape(s.subject)}', '${s.bodyHtml}', '${sqlEscape(s.bodyText)}', ${s.inReplyTo ? `'${s.inReplyTo}'` : "NULL"}, 'sent', (CAST(strftime('%s','now') AS INTEGER) - ${s.sentOffsetSec}), (CAST(strftime('%s','now') AS INTEGER) - ${s.sentOffsetSec}), ${s.cc ? ccToJson(s.cc) : "NULL"})`,
+              `  ('${s.id}', '${s.personId}', '${sqlEscape(s.to)}', '${s.fromAddress}', '${sqlEscape(s.subject)}', '${s.bodyHtml}', '${sqlEscape(s.bodyText)}', ${s.inReplyTo ? `'${s.inReplyTo}'` : "NULL"}, 'sent', (CAST(strftime('%s','now') AS INTEGER) - ${s.sentOffsetSec}), (CAST(strftime('%s','now') AS INTEGER) - ${s.sentOffsetSec}), ${s.cc ? ccToJson(s.cc) : "NULL"}, ${s.conversationId ? `'${s.conversationId}'` : "NULL"})`,
           )
           .join(",\n") + ";",
       );
@@ -936,11 +1757,17 @@ function renderSql(): RenderResult {
     sql: lines.join("\n"),
     attachments,
     rosterChangePeopleIds,
+    groupConversationIds: group.threadConversationIds,
+    groupMessageCounts: group.groupMessageCounts,
+    groupPersonIds: group.groupPeople.map((p) => p.id),
     stats: {
-      people: people.length,
+      people: allPeople.length,
       emails: emails.length,
       sent: sent.length,
       attachments: attachments.length,
+      groupPeople: group.groupPeople.length,
+      groupThreads: GROUP_THREADS.length,
+      groupMessages: group.groupEmails.length + group.groupSent.length,
     },
   };
 }
@@ -988,6 +1815,12 @@ console.log(
 console.log(`Wrote upload script to ${uploadTarget}`);
 console.log(
   `Stats: ${result.stats.people} people, ${result.stats.emails} emails, ${result.stats.sent} sent, ${result.stats.attachments} attachments`,
+);
+console.log(
+  `Group threads: ${result.stats.groupThreads} (${result.groupMessageCounts.join(" + ")} = ${result.stats.groupMessages} messages)`,
+);
+console.log(
+  `Group person ids: ${result.groupPersonIds[0]} .. ${result.groupPersonIds[result.groupPersonIds.length - 1]} (${result.stats.groupPeople} total)`,
 );
 console.log(
   `Roster-change demo people: ${result.rosterChangePeopleIds.join(", ")}`,

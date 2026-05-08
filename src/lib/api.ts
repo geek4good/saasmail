@@ -10,6 +10,7 @@ export interface Person {
 }
 
 export interface GroupedPerson {
+  type: "person";
   id: string;
   email: string;
   name: string | null;
@@ -20,6 +21,34 @@ export interface GroupedPerson {
   recipients: string[];
   hasAttachment: number;
 }
+
+/**
+ * A multi-participant conversation surfaced in the inbox list. Created when
+ * a thread has 2+ external participants. Internal teammates can be CC'd
+ * without changing the conversation identity — they show up under
+ * `ccParticipants`, not as standalone rows.
+ */
+export interface GroupedConversation {
+  type: "group";
+  id: string;
+  inbox: string;
+  participants: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+  }>;
+  ccParticipants: Array<{
+    email: string;
+    name: string | null;
+  }>;
+  lastEmailAt: number;
+  unreadCount: number;
+  totalCount: number;
+  hasAttachment: number;
+}
+
+/** Discriminated union — anything that shows up in the inbox sidebar/table. */
+export type GroupedItem = GroupedPerson | GroupedConversation;
 
 export interface CcEntry {
   email: string;
@@ -112,7 +141,8 @@ export async function fetchPerson(id: string): Promise<Person> {
 }
 
 export interface PaginatedGroupedPeople {
-  data: GroupedPerson[];
+  /** Mixed list of person + group rows, sorted by recency. */
+  data: GroupedItem[];
   total: number;
   page: number;
   limit: number;
@@ -134,6 +164,26 @@ export async function fetchGroupedPeople(params?: {
   if (params?.page) qs.set("page", params.page.toString());
   if (params?.limit) qs.set("limit", params.limit.toString());
   return apiFetch(`/api/people/grouped?${qs}`);
+}
+
+export interface ConversationDetail {
+  conversation: {
+    id: string;
+    inbox: string;
+    participants: Array<{
+      id: string;
+      email: string;
+      name: string | null;
+    }>;
+  };
+  emails: Email[];
+}
+
+/** Fetch the full chronological timeline for a group conversation. */
+export async function fetchConversationEmails(
+  conversationId: string,
+): Promise<ConversationDetail> {
+  return apiFetch(`/api/conversations/${conversationId}/emails`);
 }
 
 export async function fetchPersonEmails(

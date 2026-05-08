@@ -1,10 +1,15 @@
 import { useMemo } from "react";
 import { Paperclip, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { GroupedPerson } from "@/lib/api";
+import type { GroupedItem, GroupedPerson } from "@/lib/api";
 
 interface PeopleTableProps {
-  people: GroupedPerson[];
+  /**
+   * Mixed list — group rows are silently filtered out for now since the
+   * column-oriented table layout doesn't fit them well. Groups stay
+   * visible in List view.
+   */
+  items: GroupedItem[];
   loading?: boolean;
   onSelectPerson: (person: GroupedPerson) => void;
   selectedIds?: Set<string>;
@@ -87,7 +92,7 @@ function RowCheckbox({ checked, onChange, ariaLabel }: RowCheckboxProps) {
 }
 
 export default function PeopleTable({
-  people,
+  items,
   loading,
   onSelectPerson,
   selectedIds,
@@ -95,6 +100,12 @@ export default function PeopleTable({
   onToggleSelectAll,
   onMarkPersonRead,
 }: PeopleTableProps) {
+  // Filter to person rows only — groups are surfaced in List view, where
+  // their overlapping-avatar treatment fits the layout.
+  const people = useMemo(
+    () => items.filter((it): it is GroupedPerson => it.type === "person"),
+    [items],
+  );
   const stats = useMemo(() => {
     let unread = 0;
     let withAttachments = 0;

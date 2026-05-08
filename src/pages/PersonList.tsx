@@ -9,23 +9,34 @@ import {
   CheckCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deletePerson, type GroupedPerson } from "@/lib/api";
+import {
+  deletePerson,
+  type GroupedItem,
+  type GroupedPerson,
+  type GroupedConversation,
+} from "@/lib/api";
+import GroupRow from "@/components/GroupRow";
 
 interface PersonListProps {
-  people: GroupedPerson[];
-  setPeople: (people: GroupedPerson[]) => void;
+  /** Mixed list of person + group rows from /api/people/grouped. */
+  items: GroupedItem[];
+  /** Replaces the items list (used for optimistic delete). */
+  setItems: (items: GroupedItem[]) => void;
   loading: boolean;
   total: number;
   pageSize: number;
   page: number;
   onPageChange: (page: number) => void;
   selectedPersonId: string | null;
+  selectedConversationId: string | null;
   onSelectPerson: (person: GroupedPerson) => void;
+  onSelectConversation: (conv: GroupedConversation) => void;
   onPersonDeleted?: (personId: string) => void;
   isAdmin?: boolean;
   selectedIds?: Set<string>;
   onToggleSelected?: (id: string) => void;
   onMarkPersonRead?: (id: string) => void;
+  onMarkConversationRead?: (id: string) => void;
 }
 
 // Deterministic pastel-on-violet palette per person initial.
@@ -75,20 +86,23 @@ function initials(name: string | null, email: string) {
 }
 
 export default function PersonList({
-  people,
-  setPeople,
+  items,
+  setItems,
   loading,
   total,
   pageSize,
   page,
   onPageChange,
   selectedPersonId,
+  selectedConversationId,
   onSelectPerson,
+  onSelectConversation,
   onPersonDeleted,
   isAdmin,
   selectedIds,
   onToggleSelected,
   onMarkPersonRead,
+  onMarkConversationRead,
 }: PersonListProps) {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(
@@ -122,9 +136,17 @@ export default function PersonList({
     )
       return;
     await deletePerson(person.id);
-    setPeople(people.filter((p) => p.id !== person.id));
+    setItems(
+      items.filter((it) => !(it.type === "person" && it.id === person.id)),
+    );
     onPersonDeleted?.(person.id);
   }
+
+  // Quick predicates for the union mapping below.
+  const persons = items.filter(
+    (it): it is GroupedPerson => it.type === "person",
+  );
+  void persons; // eslint shut-up; we use it conceptually below
 
   const showingRange = useMemo(() => {
     if (total === 0) return "0";
@@ -151,7 +173,7 @@ export default function PersonList({
           <div className="flex flex-col items-center justify-center gap-2 px-4 py-16 text-center">
             <p className="text-sm font-light text-text-tertiary">Loading…</p>
           </div>
-        ) : people.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
             <p className="text-sm font-medium text-text-primary">
               No people found
@@ -162,7 +184,19 @@ export default function PersonList({
           </div>
         ) : (
           <ul className="divide-y divide-border/60">
-            {people.map((person) => {
+            {items.map((item) => {
+              if (item.type === "group") {
+                return (
+                  <GroupRow
+                    key={`g_${item.id}`}
+                    group={item}
+                    isSelected={selectedConversationId === item.id}
+                    onSelect={() => onSelectConversation(item)}
+                    onMarkRead={onMarkConversationRead}
+                  />
+                );
+              }
+              const person = item;
               const isSelected = selectedPersonId === person.id;
               const isChecked = selectedIds?.has(person.id) ?? false;
               const selectionMode = selectedIds !== undefined;
@@ -372,7 +406,10 @@ export default function PersonList({
               data-testid="person-delete-button"
               onClick={(e) => {
                 e.stopPropagation();
-                const person = people.find((p) => p.id === menuOpenId);
+                const person = items.find(
+                  (it): it is GroupedPerson =>
+                    it.type === "person" && it.id === menuOpenId,
+                );
                 if (person) handleDeletePerson(person);
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-600 transition-colors hover:bg-red-50"

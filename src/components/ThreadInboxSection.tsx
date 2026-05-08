@@ -14,6 +14,13 @@ interface ThreadInboxSectionProps {
   group: ThreadInboxGroup;
   personEmail: string;
   internalDomains?: string[];
+  /**
+   * Per-bubble sender override — used in group conversations where
+   * each bubble has a different sender.
+   */
+  senderResolver?: (
+    email: Email,
+  ) => { email: string; name: string | null } | null;
   isOlderExpanded: boolean;
   onToggleOlder: () => void;
   onOpenHtml: (email: Email) => void;
@@ -26,6 +33,7 @@ export default function ThreadInboxSection({
   group,
   personEmail,
   internalDomains = [],
+  senderResolver,
   isOlderExpanded,
   onToggleOlder,
   onOpenHtml,
@@ -78,6 +86,7 @@ export default function ThreadInboxSection({
                   email={email}
                   personEmail={personEmail}
                   internalDomains={internalDomains}
+                  senderResolver={senderResolver}
                   onOpenHtml={onOpenHtml}
                   onMarkRead={onMarkRead}
                   onReply={onReply}
@@ -103,6 +112,7 @@ export default function ThreadInboxSection({
               email={latest}
               personEmail={personEmail}
               internalDomains={internalDomains}
+              senderResolver={senderResolver}
               onOpenHtml={onOpenHtml}
               onMarkRead={onMarkRead}
               onReply={onReply}

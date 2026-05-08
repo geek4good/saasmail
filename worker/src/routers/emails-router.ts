@@ -15,14 +15,14 @@ export const emailsRouter = new OpenAPIHono<{
   Variables: Variables;
 }>();
 
-const CcEntrySchema = z.object({
+export const CcEntrySchema = z.object({
   email: z.string(),
   name: z.string().nullable().optional(),
 });
 
 /** Parse a stored cc TEXT column (JSON) into a typed array, falling back to
  *  [] for NULL or any malformed/corrupt JSON so a bad row never breaks reads. */
-function parseCc(
+export function parseCc(
   raw: string | null | undefined,
 ): Array<{ email: string; name?: string | null }> {
   if (!raw) return [];
@@ -34,7 +34,7 @@ function parseCc(
   }
 }
 
-const EmailSchema = z.object({
+export const EmailSchema = z.object({
   id: z.string(),
   type: z.enum(["received", "sent"]),
   personId: z.string().nullable(),

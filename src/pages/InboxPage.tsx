@@ -18,9 +18,12 @@ import {
   fetchStats,
   fetchGroupedPeople,
   markPeopleRead,
+  type GroupedItem,
   type GroupedPerson,
+  type GroupedConversation,
   type Stats,
 } from "@/lib/api";
+import ConversationDetail from "./ConversationDetail";
 import { useSession } from "@/lib/auth-client";
 import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
 import { PushOptInBanner } from "@/components/PushOptInBanner";
@@ -34,7 +37,9 @@ export default function InboxPage() {
   const [selectedPerson, setSelectedPerson] = useState<GroupedPerson | null>(
     null,
   );
-  const [people, setPeople] = useState<GroupedPerson[]>([]);
+  const [selectedConversation, setSelectedConversation] =
+    useState<GroupedConversation | null>(null);
+  const [items, setItems] = useState<GroupedItem[]>([]);
   const [peopleTotal, setPeopleTotal] = useState(0);
   const [peoplePage, setPeoplePage] = useState(1);
   const [peopleLoading, setPeopleLoading] = useState(true);
@@ -66,7 +71,7 @@ export default function InboxPage() {
         limit: PEOPLE_PAGE_SIZE,
       })
         .then((res) => {
-          setPeople(res.data);
+          setItems(res.data);
           setPeopleTotal(res.total);
         })
         .finally(() => setPeopleLoading(false));
@@ -89,37 +94,45 @@ export default function InboxPage() {
     });
   }, []);
 
+  // Bulk-select operates on person rows only — groups don't participate
+  // in the bulk-mark-read flow (each group has its own per-row badge).
   const toggleSelectAll = useCallback(() => {
+    const persons = items.filter(
+      (it): it is GroupedPerson => it.type === "person",
+    );
     setSelectedIds((prev) => {
-      const allOnPage = people.every((p) => prev.has(p.id));
+      const allOnPage = persons.every((p) => prev.has(p.id));
       if (allOnPage) {
         const next = new Set(prev);
-        for (const p of people) next.delete(p.id);
+        for (const p of persons) next.delete(p.id);
         return next;
       }
       const next = new Set(prev);
-      for (const p of people) next.add(p.id);
+      for (const p of persons) next.add(p.id);
       return next;
     });
-  }, [people]);
+  }, [items]);
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  // Optimistic mark-read: clear unread locally, fire API, refresh on success.
+  // Optimistic mark-read: clear unread locally on the matching person
+  // rows (group rows have their own mark-read path). Fire API, refresh.
   async function applyMarkRead(personIds: string[]) {
     if (personIds.length === 0) return;
     setBulkBusy(true);
-    const before = people;
-    setPeople(
-      people.map((p) =>
-        personIds.includes(p.id) ? { ...p, unreadCount: 0 } : p,
+    const before = items;
+    setItems(
+      items.map((it) =>
+        it.type === "person" && personIds.includes(it.id)
+          ? { ...it, unreadCount: 0 }
+          : it,
       ),
     );
     try {
       await markPeopleRead(personIds);
       incrementRefreshKey();
     } catch {
-      setPeople(before);
+      setItems(before);
     } finally {
       setBulkBusy(false);
     }
@@ -159,7 +172,10 @@ export default function InboxPage() {
     // Prefer a hit in the already-loaded list (cheaper, has full grouped
     // stats); fall back to fetching the person directly so we can still
     // open the conversation when it isn't on the current page.
-    const found = people.find((p) => p.id === routePersonId);
+    const found = items.find(
+      (it): it is GroupedPerson =>
+        it.type === "person" && it.id === routePersonId,
+    );
     if (found) {
       setSelectedPerson(found);
       return;
@@ -169,6 +185,7 @@ export default function InboxPage() {
       .then((p) => {
         if (cancelled) return;
         setSelectedPerson({
+          type: "person",
           id: p.id,
           email: p.email,
           name: p.name,
@@ -179,6 +196,7 @@ export default function InboxPage() {
           // the grouped list will overwrite this object with full stats once
           // it loads. PersonDetail only needs `id` to fetch emails.
           recipientCount: 1,
+          recipients: [],
           hasAttachment: 0,
         });
       })
@@ -186,30 +204,30 @@ export default function InboxPage() {
     return () => {
       cancelled = true;
     };
-  }, [routePersonId, people, selectedPerson?.id]);
+  }, [routePersonId, items, selectedPerson?.id]);
 
   function handleEmailRead(personId: string) {
-    setPeople((prev) =>
-      prev.map((p) =>
-        p.id === personId
-          ? { ...p, unreadCount: Math.max(0, p.unreadCount - 1) }
-          : p,
+    setItems((prev) =>
+      prev.map((it) =>
+        it.type === "person" && it.id === personId
+          ? { ...it, unreadCount: Math.max(0, it.unreadCount - 1) }
+          : it,
       ),
     );
   }
 
   function handleEmailDelete(personId: string, wasUnread: boolean) {
-    setPeople((prev) =>
-      prev.map((p) =>
-        p.id === personId
+    setItems((prev) =>
+      prev.map((it) =>
+        it.type === "person" && it.id === personId
           ? {
-              ...p,
-              totalCount: Math.max(0, p.totalCount - 1),
+              ...it,
+              totalCount: Math.max(0, it.totalCount - 1),
               unreadCount: wasUnread
-                ? Math.max(0, p.unreadCount - 1)
-                : p.unreadCount,
+                ? Math.max(0, it.unreadCount - 1)
+                : it.unreadCount,
             }
-          : p,
+          : it,
       ),
     );
   }
@@ -334,8 +352,11 @@ export default function InboxPage() {
             // table can scroll instead of pushing the page taller.
             <div className="flex min-h-0 flex-1 overflow-hidden bg-card">
               <PeopleTable
-                people={people}
-                onSelectPerson={(p) => setSelectedPerson(p)}
+                items={items}
+                onSelectPerson={(p) => {
+                  setSelectedConversation(null);
+                  setSelectedPerson(p);
+                }}
                 selectedIds={selectedIds}
                 onToggleSelected={toggleSelected}
                 onToggleSelectAll={toggleSelectAll}
@@ -348,22 +369,32 @@ export default function InboxPage() {
           <div className="flex h-full min-h-0">
             <div
               className={`w-full shrink-0 border-r border-border bg-bg-subtle md:w-96 ${
-                selectedPerson ? "hidden md:block" : "block"
+                selectedPerson || selectedConversation
+                  ? "hidden md:block"
+                  : "block"
               }`}
             >
               {showBanner && (
                 <PushOptInBanner onClose={() => setShowBanner(false)} />
               )}
               <PersonList
-                people={people}
-                setPeople={setPeople}
+                items={items}
+                setItems={setItems}
                 loading={peopleLoading}
                 total={peopleTotal}
                 pageSize={PEOPLE_PAGE_SIZE}
                 page={peoplePage}
                 onPageChange={setPeoplePage}
                 selectedPersonId={selectedPerson?.id ?? null}
-                onSelectPerson={setSelectedPerson}
+                selectedConversationId={selectedConversation?.id ?? null}
+                onSelectPerson={(p) => {
+                  setSelectedConversation(null);
+                  setSelectedPerson(p);
+                }}
+                onSelectConversation={(c) => {
+                  setSelectedPerson(null);
+                  setSelectedConversation(c);
+                }}
                 onPersonDeleted={(id) => {
                   if (selectedPerson?.id === id) setSelectedPerson(null);
                 }}
@@ -376,10 +407,36 @@ export default function InboxPage() {
 
             <div
               className={`min-w-0 flex-1 bg-card ${
-                selectedPerson ? "block" : "hidden md:block"
+                selectedPerson || selectedConversation
+                  ? "block"
+                  : "hidden md:block"
               }`}
             >
-              {selectedPerson ? (
+              {selectedConversation ? (
+                <div className="flex h-full flex-col">
+                  <button
+                    onClick={() => setSelectedConversation(null)}
+                    className="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary md:hidden"
+                  >
+                    <ArrowLeft size={14} />
+                    Back
+                  </button>
+                  <div className="flex-1 overflow-hidden">
+                    <ConversationDetail
+                      conversation={selectedConversation}
+                      refreshKey={refreshKey}
+                      internalDomains={
+                        stats?.senderIdentities?.map((s) => {
+                          const at = s.email.lastIndexOf("@");
+                          return at === -1
+                            ? ""
+                            : s.email.slice(at + 1).toLowerCase();
+                        }) ?? []
+                      }
+                    />
+                  </div>
+                </div>
+              ) : selectedPerson ? (
                 <div className="flex h-full flex-col">
                   <button
                     onClick={() => setSelectedPerson(null)}

@@ -5,6 +5,7 @@ import { createEmailSender } from "../lib/email-sender";
 import { sentEmails } from "../db/sent-emails.schema";
 import { people } from "../db/people.schema";
 import { emails } from "../db/emails.schema";
+import { senderIdentities } from "../db/sender-identities.schema";
 import { json201Response } from "../lib/helpers";
 import { cancelSequencesForPerson } from "../lib/cancel-sequence";
 import { emailTemplates } from "../db/email-templates.schema";
@@ -13,6 +14,35 @@ import type { Variables } from "../variables";
 import { formatFromAddress } from "../lib/format-from-address";
 import { assertInboxAllowed } from "../lib/inbox-permissions";
 import { generateMessageId } from "../lib/message-id";
+import { computeConversationId, externalsOnly } from "../lib/conversation-id";
+
+/**
+ * Fetch the set of "internal" domains (domains owned by our
+ * sender_identities) for the current request — used to derive the
+ * external-only participant list when computing a conversation_id.
+ */
+async function fetchInternalDomains(
+  db: ReturnType<typeof OpenAPIHono.prototype.notFound> extends never
+    ? unknown
+    : unknown,
+): Promise<string[]> {
+  // Loose typing — we just need .select() and .from() to work. The actual
+  // db value comes from c.get("db") which already has the correct type.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = await (db as any)
+    .select({ email: senderIdentities.email })
+    .from(senderIdentities);
+  return Array.from(
+    new Set(
+      rows
+        .map((r: { email: string }) => {
+          const at = r.email.lastIndexOf("@");
+          return at === -1 ? "" : r.email.slice(at + 1).toLowerCase();
+        })
+        .filter(Boolean),
+    ),
+  ) as string[];
+}
 
 export const sendRouter = new OpenAPIHono<{
   Bindings: CloudflareBindings;
@@ -122,6 +152,16 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
     personId = refetched[0]!.id;
   }
 
+  // Compute conversation_id from the external participant set on this
+  // outbound message. The "from" side is us (internal); we count the
+  // primary recipient and any external CC addresses.
+  const internalDomains = await fetchInternalDomains(db);
+  const externals = externalsOnly(
+    [to, ...(cc ?? []).map((c) => c.email)],
+    internalDomains,
+  );
+  const conversationId = await computeConversationId(fromAddress, externals);
+
   // Store sent email
   const id = nanoid();
   await db.insert(sentEmails).values({
@@ -136,6 +176,7 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
     resendId: result.id,
     status: result.error ? "failed" : "sent",
     cc: cc && cc.length > 0 ? JSON.stringify(cc) : null,
+    conversationId,
     sentAt: now,
     createdAt: now,
   });
@@ -308,6 +349,17 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
     },
   });
 
+  // Compute conversation_id for this reply.
+  const internalDomainsReply = await fetchInternalDomains(db);
+  const externalsReply = externalsOnly(
+    [toAddress, ...(cc ?? []).map((c) => c.email)],
+    internalDomainsReply,
+  );
+  const conversationIdReply = await computeConversationId(
+    fromAddress,
+    externalsReply,
+  );
+
   // Store sent email
   const id = nanoid();
   await db.insert(sentEmails).values({
@@ -323,6 +375,7 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
     resendId: result.id,
     status: result.error ? "failed" : "sent",
     cc: cc && cc.length > 0 ? JSON.stringify(cc) : null,
+    conversationId: conversationIdReply,
     sentAt: now,
     createdAt: now,
   });

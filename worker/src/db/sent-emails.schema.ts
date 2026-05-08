@@ -19,6 +19,11 @@ export const sentEmails = sqliteTable(
      * recipients. NULL = no CC. Mirrors the `cc` column on `emails`.
      */
     cc: text("cc"),
+    /**
+     * Group-thread identity. Mirrors `emails.conversation_id`. See
+     * migration 0022 for the algorithm + rationale.
+     */
+    conversationId: text("conversation_id"),
     sentAt: integer("sent_at").notNull(),
     createdAt: integer("created_at").notNull(),
   },

@@ -18,6 +18,14 @@ interface ChatInboxSectionProps {
   personEmail: string;
   /** Domains we treat as "internal" for CC chip coloring. */
   internalDomains?: string[];
+  /**
+   * Per-bubble sender override — used in group conversations to label
+   * each received bubble with the actual sender's name. Returns null
+   * to fall back to the default behavior.
+   */
+  senderResolver?: (
+    email: Email,
+  ) => { email: string; name: string | null } | null;
   onOpenHtml: (email: Email) => void;
   onMarkRead: (email: Email) => void;
   onDelete: (emailId: string) => void;
@@ -58,6 +66,9 @@ function dayLabel(ts: number): string {
 interface BubbleProps {
   email: Email;
   internalDomains?: string[];
+  senderResolver?: (
+    email: Email,
+  ) => { email: string; name: string | null } | null;
   onOpenHtml: (email: Email) => void;
   onMarkRead: (email: Email) => void;
   onDelete: (emailId: string) => void;
@@ -66,10 +77,15 @@ interface BubbleProps {
 function Bubble({
   email,
   internalDomains = [],
+  senderResolver,
   onOpenHtml,
   onMarkRead,
   onDelete,
 }: BubbleProps) {
+  // Resolve the sender label for received bubbles. In a group conversation,
+  // each received bubble is from a different person; senderResolver lets
+  // the parent supply per-message identity. Falls back to nothing for 1-on-1.
+  const senderOverride = senderResolver?.(email) ?? null;
   const [expanded, setExpanded] = useState(false);
   const isSent = email.type === "sent";
   const isUnread = email.type === "received" && email.isRead === 0;
@@ -92,6 +108,15 @@ function Bubble({
     if (isUnread) onMarkRead(email);
   }
 
+  // Sender label: only shown on received bubbles in group conversations
+  // (i.e. when senderOverride is supplied). Keeps 1-on-1 chats clean.
+  const senderLabel =
+    !isSent && senderOverride
+      ? senderOverride.name && senderOverride.name.trim()
+        ? senderOverride.name
+        : senderOverride.email
+      : null;
+
   return (
     <div
       data-testid="chat-bubble"
@@ -101,6 +126,14 @@ function Bubble({
       onClick={handleClick}
       title={email.subject ?? undefined}
     >
+      {senderLabel && (
+        <span
+          className="mb-0.5 max-w-[85%] truncate px-2 text-[10px] font-medium uppercase tracking-wider text-text-tertiary sm:max-w-[78%]"
+          title={senderOverride?.email}
+        >
+          {senderLabel}
+        </span>
+      )}
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm sm:max-w-[78%] ${
           isSent
@@ -231,6 +264,7 @@ export default function ChatInboxSection({
   group,
   personEmail: _personEmail,
   internalDomains = [],
+  senderResolver,
   onOpenHtml,
   onMarkRead,
   onDelete,
@@ -378,6 +412,7 @@ export default function ChatInboxSection({
                 key={item.email.id}
                 email={item.email}
                 internalDomains={internalDomains}
+                senderResolver={senderResolver}
                 onOpenHtml={onOpenHtml}
                 onMarkRead={onMarkRead}
                 onDelete={onDelete}
