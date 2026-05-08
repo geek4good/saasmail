@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "deploy": "vite build && wrangler deploy --minify",
+    "deploy": "vite build && wrangler d1 migrations apply saasmail-db --remote && wrangler deploy --minify",
     "deploy:demo": "vite build && wrangler deploy --minify --config wrangler.demo.jsonc",
     "auth:generate": "npx @better-auth/cli@latest generate --config worker/src/auth/index.ts --output worker/src/db/auth.schema.ts -y",
     "auth:migrate": "npx @better-auth/cli@latest migrate --config worker/src/auth/index.ts",
@@ -96,6 +96,6 @@
     "typescript": "^5.8.3",
     "vite": "^7.0.0",
     "vitest": "^4.1.5",
-    "wrangler": "^4.88.0"
+    "wrangler": "^4.84.1"
   }
 }

@@ -408,13 +408,13 @@ describe("reply stores generated message-id", () => {
       recipient: "a@x.com",
       messageId: "<orig@external>",
     });
+    const fd = new FormData();
+    fd.set("fromAddress", "a@x.com");
+    fd.set("bodyHtml", "<p>reply</p>");
     const res = await authFetch("/api/send/reply/e-r", {
       apiKey,
       method: "POST",
-      body: JSON.stringify({
-        fromAddress: "a@x.com",
-        bodyHtml: "<p>reply</p>",
-      }),
+      body: fd,
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string };
@@ -445,15 +445,15 @@ describe("send stores generated message-id", () => {
       email: "admin@x.com",
     });
     await grantInbox(userId, "a@x.com");
+    const fd = new FormData();
+    fd.set("to", "target@external.com");
+    fd.set("fromAddress", "a@x.com");
+    fd.set("subject", "hello");
+    fd.set("bodyHtml", "<p>hi</p>");
     const res = await authFetch("/api/send", {
       apiKey,
       method: "POST",
-      body: JSON.stringify({
-        to: "target@external.com",
-        fromAddress: "a@x.com",
-        subject: "hello",
-        bodyHtml: "<p>hi</p>",
-      }),
+      body: fd,
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string };
@@ -492,13 +492,13 @@ describe("send stores generated message-id", () => {
         sentAt: now,
         createdAt: now,
       });
+      const fd = new FormData();
+      fd.set("fromAddress", "a@x.com");
+      fd.set("bodyHtml", "<p>follow up</p>");
       const res = await authFetch("/api/send/reply/sent-1", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
-          fromAddress: "a@x.com",
-          bodyHtml: "<p>follow up</p>",
-        }),
+        body: fd,
       });
       expect(res.status).toBe(201);
       const body = (await res.json()) as { id: string };
@@ -537,13 +537,13 @@ describe("send stores generated message-id", () => {
         sentAt: now,
         createdAt: now,
       });
+      const fd = new FormData();
+      fd.set("fromAddress", "a@x.com");
+      fd.set("bodyHtml", "<p>follow up</p>");
       const res = await authFetch("/api/send/reply/sent-legacy", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
-          fromAddress: "a@x.com",
-          bodyHtml: "<p>follow up</p>",
-        }),
+        body: fd,
       });
       expect(res.status).toBe(201);
       const body = (await res.json()) as { id: string };
@@ -584,13 +584,13 @@ describe("send stores generated message-id", () => {
         sentAt: now,
         createdAt: now,
       });
+      const fd = new FormData();
+      fd.set("fromAddress", "a@x.com");
+      fd.set("bodyHtml", "<p>follow up</p>");
       const res = await authFetch("/api/send/reply/sent-other-inbox", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
-          fromAddress: "a@x.com",
-          bodyHtml: "<p>follow up</p>",
-        }),
+        body: fd,
       });
       expect(res.status).toBe(403);
     });
@@ -602,13 +602,13 @@ describe("send stores generated message-id", () => {
         email: "admin@x.com",
       });
       await grantInbox(userId, "a@x.com");
+      const fd = new FormData();
+      fd.set("fromAddress", "a@x.com");
+      fd.set("bodyHtml", "<p>follow up</p>");
       const res = await authFetch("/api/send/reply/does-not-exist", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
-          fromAddress: "a@x.com",
-          bodyHtml: "<p>follow up</p>",
-        }),
+        body: fd,
       });
       expect(res.status).toBe(404);
     });

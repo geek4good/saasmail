@@ -12,6 +12,8 @@ import { sendEmail, fetchStats, type CcEntry } from "@/lib/api";
 import { dispatchEmailSent } from "@/lib/email-events";
 import { getFromLabel } from "@/lib/format";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
+import AttachmentPicker from "@/components/AttachmentPicker";
+import { useAttachments } from "@/hooks/useAttachments";
 
 /**
  * Optional seed values applied when the compose drawer opens. Used by
@@ -63,6 +65,13 @@ export default function ComposeModal({
   // Tracked separately from the body so swapping `From` mid-compose can swap
   // the signature without stomping on what the user has typed.
   const [signatureHtml, setSignatureHtml] = useState<string | null>(null);
+  const {
+    attachments,
+    error: attachmentError,
+    handleFileChange,
+    removeAttachment,
+    resetAttachments,
+  } = useAttachments();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   // Compact tray vs. full-viewport. Toggled by the maximize button in
@@ -117,6 +126,7 @@ export default function ComposeModal({
       setSubject("");
       setBodyHtml("");
       setSignatureHtml(null);
+      resetAttachments();
       setError("");
       setFullscreen(false);
     }
@@ -156,6 +166,7 @@ export default function ComposeModal({
         ...(cc.length > 0 ? { cc } : {}),
         subject,
         bodyHtml: finalBody,
+        attachments,
       });
       dispatchEmailSent({ fromAddress, to, origin: "compose" });
       onClose();
@@ -280,6 +291,12 @@ export default function ComposeModal({
             data-testid="compose-body"
           >
             <TiptapEditor content={bodyHtml} onUpdate={setBodyHtml} />
+            <AttachmentPicker
+              attachments={attachments}
+              error={attachmentError}
+              onFileChange={handleFileChange}
+              onRemove={removeAttachment}
+            />
             {safeSignatureHtml && (
               <div
                 data-signature

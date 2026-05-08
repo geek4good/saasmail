@@ -289,15 +289,15 @@ describe("send scoping", () => {
       email: "m@x.com",
     });
     await grantInbox(userId, "a@x.com");
+    const fd = new FormData();
+    fd.set("to", "target@external.com");
+    fd.set("fromAddress", "b@x.com");
+    fd.set("subject", "hi");
+    fd.set("bodyHtml", "<p>hi</p>");
     const res = await authFetch("/api/send", {
       apiKey,
       method: "POST",
-      body: JSON.stringify({
-        to: "target@external.com",
-        fromAddress: "b@x.com",
-        subject: "hi",
-        bodyHtml: "<p>hi</p>",
-      }),
+      body: fd,
     });
     expect(res.status).toBe(403);
   });

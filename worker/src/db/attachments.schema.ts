@@ -4,7 +4,8 @@ export const attachments = sqliteTable(
   "attachments",
   {
     id: text("id").primaryKey(),
-    emailId: text("email_id").notNull(),
+    emailId: text("email_id"),
+    sentEmailId: text("sent_email_id"),
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),
     size: integer("size").notNull(),
@@ -12,5 +13,8 @@ export const attachments = sqliteTable(
     contentId: text("content_id"),
     createdAt: integer("created_at").notNull(),
   },
-  (table) => [index("attachments_email_id_idx").on(table.emailId)],
+  (table) => [
+    index("attachments_email_id_idx").on(table.emailId),
+    index("attachments_sent_email_id_idx").on(table.sentEmailId),
+  ],
 );

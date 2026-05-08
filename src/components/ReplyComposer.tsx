@@ -10,6 +10,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import TiptapEditor from "@/components/TiptapEditor";
+import AttachmentPicker from "@/components/AttachmentPicker";
 import CcInput from "@/components/CcInput";
 import ThreadMessage from "@/components/ThreadMessage";
 import {
@@ -30,6 +31,7 @@ import { dispatchEmailSent } from "@/lib/email-events";
 import { getFromLabel } from "@/lib/format";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 import { cn } from "@/lib/utils";
+import { useAttachments } from "@/hooks/useAttachments";
 
 interface ReplyComposerProps {
   emailId: string;
@@ -78,6 +80,12 @@ export default function ReplyComposer({
   // Stored separately from the body so swapping `From` mid-reply replaces
   // the trailing signature without touching what the user has typed.
   const [signatureHtml, setSignatureHtml] = useState<string | null>(null);
+  const {
+    attachments,
+    error: attachmentError,
+    handleFileChange,
+    removeAttachment,
+  } = useAttachments();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   // Compact tray vs. full-viewport. Toggled by the maximize button.
@@ -212,6 +220,7 @@ export default function ReplyComposer({
         await replyToEmail(emailId, {
           bodyHtml: finalBody,
           fromAddress,
+          attachments,
           ...(ccPayload ? { cc: ccPayload } : {}),
         });
       } else {
@@ -369,6 +378,12 @@ export default function ReplyComposer({
                     />
                   )}
                 </div>
+                <AttachmentPicker
+                  attachments={attachments}
+                  error={attachmentError}
+                  onFileChange={handleFileChange}
+                  onRemove={removeAttachment}
+                />
               </div>
             ) : (
               <div className="space-y-4 px-4 py-3 sm:px-5">
