@@ -217,6 +217,41 @@ describe("emails router", () => {
       const res = await authFetch("/api/emails/nonexistent", { apiKey });
       expect(res.status).toBe(404);
     });
+
+    it("returns a sent email when the id belongs to the sent_emails table", async () => {
+      // Reproduces the Reply-on-our-own-message bug: thread mode lets you
+      // click Reply on any visible bubble, including our own sent
+      // replies. The lookup must transparently fall back to sent_emails
+      // so the composer can render its "what you're replying to" panel.
+      const db = getDb();
+      await createTestPerson({ id: "s1", email: "a@test.com" });
+      const now = Math.floor(Date.now() / 1000);
+      await db.insert(sentEmails).values({
+        id: "se-thread",
+        personId: "s1",
+        fromAddress: "inbox@saasmail.test",
+        toAddress: "a@test.com",
+        subject: "Re: Feature request",
+        bodyHtml: "<p>thanks for the suggestion</p>",
+        bodyText: "thanks for the suggestion",
+        resendId: null,
+        status: "sent",
+        sentAt: now,
+        createdAt: now,
+      });
+
+      const res = await authFetch("/api/emails/se-thread", { apiKey });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.id).toBe("se-thread");
+      expect(data.type).toBe("sent");
+      expect(data.fromAddress).toBe("inbox@saasmail.test");
+      expect(data.toAddress).toBe("a@test.com");
+      expect(data.subject).toBe("Re: Feature request");
+      expect(data.recipient).toBeNull();
+      expect(data.isRead).toBeNull();
+      expect(data.cc).toEqual([]);
+    });
   });
 
   describe("PATCH /api/emails/:id", () => {

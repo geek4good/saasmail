@@ -285,32 +285,70 @@ const getEmailRoute = createRoute({
 emailsRouter.openapi(getEmailRoute, async (c) => {
   const db = c.get("db");
   const { id } = c.req.valid("param");
+  const allowed = c.get("allowedInboxes")!;
 
+  // Look up the id in `emails` (received) first.
   const row = await db.select().from(emails).where(eq(emails.id, id)).limit(1);
 
-  if (row.length === 0) {
-    return c.json({ error: "Email not found" }, 404);
+  if (row.length > 0) {
+    if (!allowed.isAdmin && !allowed.inboxes.includes(row[0].recipient)) {
+      return c.json({ error: "Email not found" }, 404);
+    }
+    const atts = await db
+      .select()
+      .from(attachments)
+      .where(eq(attachments.emailId, id));
+    return c.json(
+      {
+        ...row[0],
+        type: "received",
+        timestamp: row[0].receivedAt,
+        fromAddress: null,
+        toAddress: null,
+        cc: parseCc(row[0].cc),
+        attachments: atts,
+      },
+      200,
+    );
   }
 
-  const allowed = c.get("allowedInboxes")!;
-  if (!allowed.isAdmin && !allowed.inboxes.includes(row[0].recipient)) {
-    return c.json({ error: "Email not found" }, 404);
-  }
-
-  const atts = await db
+  // Fall back to `sent_emails`. The reply route already accepts both
+  // tables as reply targets, but historically this lookup didn't —
+  // which meant ReplyComposer's "what you're replying to" panel never
+  // rendered when the user clicked Reply on one of our own outgoing
+  // messages, and the silent .catch in the client masked the 404.
+  const sentRow = await db
     .select()
-    .from(attachments)
-    .where(eq(attachments.emailId, id));
+    .from(sentEmails)
+    .where(eq(sentEmails.id, id))
+    .limit(1);
 
+  if (sentRow.length === 0) {
+    return c.json({ error: "Email not found" }, 404);
+  }
+
+  // Authorization mirrors the reply route's defense-in-depth — only
+  // surface a sent row to a caller who still owns the inbox that sent it.
+  if (!allowed.isAdmin && !allowed.inboxes.includes(sentRow[0].fromAddress)) {
+    return c.json({ error: "Email not found" }, 404);
+  }
+
+  const sent = sentRow[0];
   return c.json(
     {
-      ...row[0],
-      type: "received",
-      timestamp: row[0].receivedAt,
-      fromAddress: null,
-      toAddress: null,
-      cc: parseCc(row[0].cc),
-      attachments: atts,
+      id: sent.id,
+      type: "sent",
+      personId: sent.personId,
+      recipient: null,
+      fromAddress: sent.fromAddress,
+      toAddress: sent.toAddress,
+      subject: sent.subject,
+      bodyHtml: sent.bodyHtml,
+      bodyText: sent.bodyText,
+      isRead: null,
+      cc: parseCc(sent.cc),
+      timestamp: sent.sentAt,
+      attachments: [],
     },
     200,
   );

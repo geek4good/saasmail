@@ -91,6 +91,11 @@ export default function ReplyComposer({
   const [originalEmail, setOriginalEmail] = useState<Email | null>(null);
   const [threadEmails, setThreadEmails] = useState<Email[]>([]);
   const [threadExpanded, setThreadExpanded] = useState(false);
+  // Surface failure to load the original. The previous silent `.catch`
+  // masked a real bug — the server didn't look up sent_emails, so
+  // clicking Reply on our own outgoing message rendered an empty
+  // composer with no warning.
+  const [contextError, setContextError] = useState(false);
 
   // Template state
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -104,6 +109,7 @@ export default function ReplyComposer({
   // are the default — users can still trim chips before sending.
   useEffect(() => {
     let cancelled = false;
+    setContextError(false);
     fetchEmail(emailId)
       .then(async (email) => {
         if (cancelled) return;
@@ -123,13 +129,19 @@ export default function ReplyComposer({
               limit: 12,
             });
             if (!cancelled) setThreadEmails(res.emails);
-          } catch {
-            /* non-fatal */
+          } catch (err) {
+            // Surface to console so a future regression isn't invisible.
+            console.warn("Failed to load surrounding thread", err);
           }
         }
       })
-      .catch(() => {
-        /* original may have been deleted — composer still works */
+      .catch((err) => {
+        if (cancelled) return;
+        // The composer still works — the user can type and send. But
+        // they'd have no idea why the "what you're replying to" panel
+        // is missing without this notice.
+        console.warn("Failed to load reply context", err);
+        setContextError(true);
       });
     return () => {
       cancelled = true;
@@ -331,6 +343,15 @@ export default function ReplyComposer({
                     expanded={threadExpanded}
                     onToggle={() => setThreadExpanded((v) => !v)}
                   />
+                )}
+                {!originalEmail && contextError && (
+                  <div
+                    role="status"
+                    className="rounded-[8px] border border-amber-300/40 bg-amber-100/40 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                  >
+                    Couldn't load the original message — it may have been
+                    deleted. You can still send your reply.
+                  </div>
                 )}
                 <div className="min-h-[260px] flex-1">
                   <TiptapEditor
