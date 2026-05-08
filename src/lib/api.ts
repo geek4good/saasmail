@@ -244,6 +244,17 @@ export async function markPeopleRead(
   });
 }
 
+/** Mark all unread emails in the given group conversations as read. */
+export async function markConversationsRead(
+  conversationIds: string[],
+): Promise<{ success: boolean; affected: number }> {
+  return apiFetch(`/api/conversations/mark-read`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationIds }),
+  });
+}
+
 export async function sendEmail(data: {
   to: string;
   fromAddress: string;

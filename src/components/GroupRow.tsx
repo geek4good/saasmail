@@ -2,17 +2,20 @@ import { Paperclip, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GroupedConversation } from "@/lib/api";
 
-// Same palette + hashing as PersonList's avatarColor — keeps the visual
-// language consistent between person rows and group avatars.
+// Solid palette for the stacked group avatars. Matches the *foreground*
+// hue of PersonList's soft pastel palette (so the colors are recognizable
+// per-person), but uses opaque backgrounds with white text — when avatars
+// overlap, semi-transparent backgrounds bleed through each other and the
+// stack reads as muddy patches. Solid colors keep the overlap crisp.
 const AVATAR_PALETTE = [
-  { bg: "rgba(124, 92, 252, 0.12)", fg: "#5b3ce6" },
-  { bg: "rgba(34, 197, 94, 0.12)", fg: "#15803d" },
-  { bg: "rgba(244, 114, 182, 0.14)", fg: "#be185d" },
-  { bg: "rgba(251, 146, 60, 0.14)", fg: "#c2410c" },
-  { bg: "rgba(56, 189, 248, 0.14)", fg: "#0369a1" },
-  { bg: "rgba(168, 85, 247, 0.14)", fg: "#7e22ce" },
-  { bg: "rgba(20, 184, 166, 0.14)", fg: "#0f766e" },
-  { bg: "rgba(234, 179, 8, 0.16)", fg: "#a16207" },
+  { bg: "#5b3ce6", fg: "#ffffff" }, // violet
+  { bg: "#15803d", fg: "#ffffff" }, // green
+  { bg: "#be185d", fg: "#ffffff" }, // pink
+  { bg: "#c2410c", fg: "#ffffff" }, // orange
+  { bg: "#0369a1", fg: "#ffffff" }, // blue
+  { bg: "#7e22ce", fg: "#ffffff" }, // purple
+  { bg: "#0f766e", fg: "#ffffff" }, // teal
+  { bg: "#a16207", fg: "#ffffff" }, // amber
 ];
 
 function avatarColor(seed: string) {
@@ -131,7 +134,7 @@ export default function GroupRow({
               <span
                 key={p.id}
                 title={p.name || p.email}
-                className="absolute flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold tracking-tight ring-2 ring-card"
+                className="absolute flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold tracking-tight"
                 style={{
                   backgroundColor: color.bg,
                   color: color.fg,
@@ -146,7 +149,7 @@ export default function GroupRow({
           })}
           {overflow > 0 && (
             <span
-              className="absolute flex h-7 w-7 items-center justify-center rounded-full bg-bg-muted text-[10px] font-semibold text-text-secondary ring-2 ring-card"
+              className="absolute flex h-7 w-7 items-center justify-center rounded-full bg-bg-muted text-[10px] font-semibold text-text-secondary"
               style={{
                 left: visible.length * (AVATAR_SIZE - OVERLAP),
                 top: 0,

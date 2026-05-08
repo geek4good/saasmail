@@ -18,6 +18,7 @@ import {
   fetchStats,
   fetchGroupedPeople,
   markPeopleRead,
+  markConversationsRead,
   type GroupedItem,
   type GroupedPerson,
   type GroupedConversation,
@@ -70,6 +71,9 @@ export default function InboxPage() {
     window.localStorage?.setItem("saasmail.inboxSort", sort);
   }, [sort]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedConversationIds, setSelectedConversationIds] = useState<
+    Set<string>
+  >(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
   // Resizable sidebar — the user can drag the right edge to make the
@@ -123,42 +127,82 @@ export default function InboxPage() {
     });
   }, []);
 
-  // Bulk-select operates on person rows only — groups don't participate
-  // in the bulk-mark-read flow (each group has its own per-row badge).
+  const toggleSelectedConversation = useCallback((id: string) => {
+    setSelectedConversationIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Bulk-select all (or none) on the current page — covers BOTH person
+  // and group rows in one shot. The header checkbox is "on" only when
+  // every visible row is selected.
   const toggleSelectAll = useCallback(() => {
     const persons = items.filter(
       (it): it is GroupedPerson => it.type === "person",
     );
+    const groups = items.filter(
+      (it): it is GroupedConversation => it.type === "group",
+    );
+    const allPersonsSelected =
+      persons.length === 0 || persons.every((p) => selectedIds.has(p.id));
+    const allGroupsSelected =
+      groups.length === 0 ||
+      groups.every((g) => selectedConversationIds.has(g.id));
+    const allOn = allPersonsSelected && allGroupsSelected;
     setSelectedIds((prev) => {
-      const allOnPage = persons.every((p) => prev.has(p.id));
-      if (allOnPage) {
-        const next = new Set(prev);
-        for (const p of persons) next.delete(p.id);
-        return next;
-      }
       const next = new Set(prev);
-      for (const p of persons) next.add(p.id);
+      if (allOn) {
+        for (const p of persons) next.delete(p.id);
+      } else {
+        for (const p of persons) next.add(p.id);
+      }
       return next;
     });
-  }, [items]);
+    setSelectedConversationIds((prev) => {
+      const next = new Set(prev);
+      if (allOn) {
+        for (const g of groups) next.delete(g.id);
+      } else {
+        for (const g of groups) next.add(g.id);
+      }
+      return next;
+    });
+  }, [items, selectedIds, selectedConversationIds]);
 
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setSelectedConversationIds(new Set());
+  }, []);
 
-  // Optimistic mark-read: clear unread locally on the matching person
-  // rows (group rows have their own mark-read path). Fire API, refresh.
-  async function applyMarkRead(personIds: string[]) {
-    if (personIds.length === 0) return;
+  // Optimistic mark-read: clear unread locally on the matching rows,
+  // fire APIs in parallel, roll back on failure.
+  async function applyMarkRead(personIds: string[], conversationIds: string[]) {
+    if (personIds.length === 0 && conversationIds.length === 0) return;
     setBulkBusy(true);
     const before = items;
     setItems(
-      items.map((it) =>
-        it.type === "person" && personIds.includes(it.id)
-          ? { ...it, unreadCount: 0 }
-          : it,
-      ),
+      items.map((it) => {
+        if (it.type === "person" && personIds.includes(it.id)) {
+          return { ...it, unreadCount: 0 };
+        }
+        if (it.type === "group" && conversationIds.includes(it.id)) {
+          return { ...it, unreadCount: 0 };
+        }
+        return it;
+      }),
     );
     try {
-      await markPeopleRead(personIds);
+      await Promise.all([
+        personIds.length > 0
+          ? markPeopleRead(personIds)
+          : Promise.resolve(undefined),
+        conversationIds.length > 0
+          ? markConversationsRead(conversationIds)
+          : Promise.resolve(undefined),
+      ]);
       incrementRefreshKey();
     } catch {
       setItems(before);
@@ -168,12 +212,15 @@ export default function InboxPage() {
   }
 
   function handleMarkPersonRead(id: string) {
-    applyMarkRead([id]);
+    applyMarkRead([id], []);
+  }
+
+  function handleMarkConversationRead(id: string) {
+    applyMarkRead([], [id]);
   }
 
   function handleBulkMarkRead() {
-    const ids = Array.from(selectedIds);
-    applyMarkRead(ids);
+    applyMarkRead(Array.from(selectedIds), Array.from(selectedConversationIds));
     clearSelection();
   }
   const [refreshKey, setRefreshKey] = useState(0);
@@ -329,29 +376,31 @@ export default function InboxPage() {
 
       {/* Selection bar — desktop: above the inbox card. Mobile: floats at
           the bottom of the screen so the user's thumb can reach it. */}
-      {selectedIds.size > 0 && !selectedPerson && (
-        <>
-          <div className="mb-3 hidden sm:block">
-            <SelectionBar
-              count={selectedIds.size}
-              busy={bulkBusy}
-              onMarkRead={handleBulkMarkRead}
-              onClear={clearSelection}
-            />
-          </div>
-          <div
-            className="fixed inset-x-3 bottom-3 z-40 sm:hidden"
-            style={{ bottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
-          >
-            <SelectionBar
-              count={selectedIds.size}
-              busy={bulkBusy}
-              onMarkRead={handleBulkMarkRead}
-              onClear={clearSelection}
-            />
-          </div>
-        </>
-      )}
+      {(selectedIds.size > 0 || selectedConversationIds.size > 0) &&
+        !selectedPerson &&
+        !selectedConversation && (
+          <>
+            <div className="mb-3 hidden sm:block">
+              <SelectionBar
+                count={selectedIds.size + selectedConversationIds.size}
+                busy={bulkBusy}
+                onMarkRead={handleBulkMarkRead}
+                onClear={clearSelection}
+              />
+            </div>
+            <div
+              className="fixed inset-x-3 bottom-3 z-40 sm:hidden"
+              style={{ bottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+            >
+              <SelectionBar
+                count={selectedIds.size + selectedConversationIds.size}
+                busy={bulkBusy}
+                onMarkRead={handleBulkMarkRead}
+                onClear={clearSelection}
+              />
+            </div>
+          </>
+        )}
 
       <div className="-mx-4 flex h-[calc(100vh-7rem)] min-h-[420px] flex-col overflow-hidden rounded-none bg-card shadow-sm ring-0 sm:mx-0 sm:rounded-[8px] sm:ring-1 sm:ring-border">
         {view === "table" ? (
@@ -427,8 +476,11 @@ export default function InboxPage() {
                 }}
                 selectedIds={selectedIds}
                 onToggleSelected={toggleSelected}
+                selectedConversationIds={selectedConversationIds}
+                onToggleSelectedConversation={toggleSelectedConversation}
                 onToggleSelectAll={toggleSelectAll}
                 onMarkPersonRead={handleMarkPersonRead}
+                onMarkConversationRead={handleMarkConversationRead}
               />
             </div>
           )

@@ -13,8 +13,13 @@ interface PeopleTableProps {
   loading?: boolean;
   onSelectPerson: (person: GroupedPerson) => void;
   onSelectConversation?: (conv: GroupedConversation) => void;
+  /** Selected person IDs (used for bulk-mark-read on persons). */
   selectedIds?: Set<string>;
   onToggleSelected?: (id: string) => void;
+  /** Selected conversation IDs (parallel state for groups). */
+  selectedConversationIds?: Set<string>;
+  onToggleSelectedConversation?: (id: string) => void;
+  /** Toggle "select all on page" — applies to both persons + groups. */
   onToggleSelectAll?: () => void;
   onMarkPersonRead?: (id: string) => void;
   onMarkConversationRead?: (id: string) => void;
@@ -100,6 +105,8 @@ export default function PeopleTable({
   onSelectConversation,
   selectedIds,
   onToggleSelected,
+  selectedConversationIds,
+  onToggleSelectedConversation,
   onToggleSelectAll,
   onMarkPersonRead,
   onMarkConversationRead,
@@ -136,14 +143,30 @@ export default function PeopleTable({
     };
   }, [items]);
 
+  // "All on page" = all persons selected AND all groups selected. Same
+  // header checkbox flips both sets via onToggleSelectAll.
+  const groups = useMemo(
+    () => items.filter((it): it is GroupedConversation => it.type === "group"),
+    [items],
+  );
+  const allPersonsSelected =
+    people.length === 0 ||
+    (selectedIds !== undefined && people.every((p) => selectedIds.has(p.id)));
+  const allGroupsSelected =
+    groups.length === 0 ||
+    (selectedConversationIds !== undefined &&
+      groups.every((g) => selectedConversationIds.has(g.id)));
   const allOnPageSelected =
-    people.length > 0 &&
+    items.length > 0 &&
     selectedIds !== undefined &&
-    people.every((p) => selectedIds.has(p.id));
+    allPersonsSelected &&
+    allGroupsSelected;
 
   const someOnPageSelected =
     selectedIds !== undefined &&
-    people.some((p) => selectedIds.has(p.id)) &&
+    (people.some((p) => selectedIds.has(p.id)) ||
+      (selectedConversationIds !== undefined &&
+        groups.some((g) => selectedConversationIds.has(g.id)))) &&
     !allOnPageSelected;
 
   return (
@@ -208,6 +231,10 @@ export default function PeopleTable({
                       onSelect={() => onSelectConversation?.(item)}
                       onMarkRead={onMarkConversationRead}
                       hasCheckboxColumn={selectedIds !== undefined}
+                      isSelected={
+                        selectedConversationIds?.has(item.id) ?? false
+                      }
+                      onToggleSelected={onToggleSelectedConversation}
                     />
                   );
                 }
@@ -327,11 +354,31 @@ export default function PeopleTable({
   );
 }
 
+// Solid palette for stacked group avatars — see GroupRow.tsx for the
+// rationale (transparent overlapping circles look muddy).
+const GROUP_AVATAR_PALETTE = [
+  { bg: "#5b3ce6", fg: "#ffffff" },
+  { bg: "#15803d", fg: "#ffffff" },
+  { bg: "#be185d", fg: "#ffffff" },
+  { bg: "#c2410c", fg: "#ffffff" },
+  { bg: "#0369a1", fg: "#ffffff" },
+  { bg: "#7e22ce", fg: "#ffffff" },
+  { bg: "#0f766e", fg: "#ffffff" },
+  { bg: "#a16207", fg: "#ffffff" },
+];
+function groupAvatarColor(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return GROUP_AVATAR_PALETTE[h % GROUP_AVATAR_PALETTE.length];
+}
+
 interface GroupTableRowProps {
   group: GroupedConversation;
   onSelect: () => void;
   onMarkRead?: (id: string) => void;
   hasCheckboxColumn: boolean;
+  isSelected?: boolean;
+  onToggleSelected?: (id: string) => void;
 }
 
 /**
@@ -344,6 +391,8 @@ function GroupTableRow({
   onSelect,
   onMarkRead,
   hasCheckboxColumn,
+  isSelected = false,
+  onToggleSelected,
 }: GroupTableRowProps) {
   const visible = group.participants.slice(0, 3);
   const overflow = Math.max(0, group.participants.length - visible.length);
@@ -366,11 +415,22 @@ function GroupTableRow({
   return (
     <tr
       onClick={onSelect}
-      className="group cursor-pointer border-b border-border/60 transition-colors hover:bg-text-primary/[0.025]"
+      className={cn(
+        "group cursor-pointer border-b border-border/60 transition-colors",
+        isSelected ? "bg-text-primary/[0.04]" : "hover:bg-text-primary/[0.025]",
+      )}
       data-testid="group-row"
       data-conversation-id={group.id}
     >
-      {hasCheckboxColumn && <td className="w-10 px-4 py-2.5" />}
+      {hasCheckboxColumn && (
+        <td className="w-10 px-4 py-2.5">
+          <RowCheckbox
+            checked={isSelected}
+            onChange={() => onToggleSelected?.(group.id)}
+            ariaLabel={`Select group ${group.id}`}
+          />
+        </td>
+      )}
       <td className="px-4 py-2.5">
         <div className="flex items-center gap-3">
           <span
@@ -378,12 +438,12 @@ function GroupTableRow({
             style={{ width: stackWidth, height: AVATAR }}
           >
             {visible.map((p, i) => {
-              const color = avatarColor(p.email);
+              const color = groupAvatarColor(p.email);
               return (
                 <span
                   key={p.id}
                   title={p.name || p.email}
-                  className="absolute flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-card"
+                  className="absolute flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold"
                   style={{
                     backgroundColor: color.bg,
                     color: color.fg,
@@ -398,7 +458,7 @@ function GroupTableRow({
             })}
             {overflow > 0 && (
               <span
-                className="absolute flex h-7 w-7 items-center justify-center rounded-full bg-bg-muted text-[10px] font-semibold text-text-secondary ring-2 ring-card"
+                className="absolute flex h-7 w-7 items-center justify-center rounded-full bg-bg-muted text-[10px] font-semibold text-text-secondary"
                 style={{
                   left: visible.length * (AVATAR - OVERLAP),
                   top: 0,

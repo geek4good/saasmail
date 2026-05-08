@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 import { emails } from "../db/emails.schema";
 import { sentEmails } from "../db/sent-emails.schema";
 import { attachments } from "../db/attachments.schema";
@@ -210,4 +210,88 @@ conversationsRouter.openapi(listConversationEmailsRoute, async (c) => {
     },
     200,
   );
+});
+
+// Bulk-mark-read for one or more group conversations. Mirrors
+// /api/people/mark-read but keyed by conversation_id. Used by the
+// inbox-list bulk-action bar when the user has group rows selected.
+const bulkMarkConversationsReadRoute = createRoute({
+  method: "post",
+  path: "/mark-read",
+  tags: ["Conversations"],
+  description:
+    "Mark every unread email in the given group conversations as read.",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            conversationIds: z.array(z.string()).min(1),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    ...json200Response(
+      z.object({
+        success: z.boolean(),
+        affected: z.number(),
+      }),
+      "Marked unread emails in the conversations as read",
+    ),
+  },
+});
+
+conversationsRouter.openapi(bulkMarkConversationsReadRoute, async (c) => {
+  const db = c.get("db");
+  const { conversationIds } = c.req.valid("json");
+  const allowed = c.get("allowedInboxes")!;
+
+  if (conversationIds.length === 0) {
+    return c.json({ success: true, affected: 0 }, 200);
+  }
+
+  // Scope: drop any conversations whose recipient inbox isn't in the
+  // caller's allowed set (admins can see everything). We do this by
+  // filtering the conversation_id list to the ones with at least one
+  // in-scope email row.
+  let inScopeIds = conversationIds;
+  if (!allowed.isAdmin) {
+    if (allowed.inboxes.length === 0) {
+      return c.json({ success: true, affected: 0 }, 200);
+    }
+    const inScope = await db
+      .select({ conversationId: emails.conversationId })
+      .from(emails)
+      .where(
+        and(
+          inArray(emails.conversationId, conversationIds),
+          inArray(emails.recipient, allowed.inboxes),
+        )!,
+      )
+      .groupBy(emails.conversationId);
+    inScopeIds = inScope
+      .map((r) => r.conversationId)
+      .filter((x): x is string => !!x);
+    if (inScopeIds.length === 0) {
+      return c.json({ success: true, affected: 0 }, 200);
+    }
+  }
+
+  // Count + flip unread emails in those conversations.
+  const where = and(
+    inArray(emails.conversationId, inScopeIds),
+    eq(emails.isRead, 0),
+  )!;
+  const countRows = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(emails)
+    .where(where);
+  const affected = countRows[0]?.count ?? 0;
+  if (affected > 0) {
+    await db.update(emails).set({ isRead: 1 }).where(where);
+  }
+
+  return c.json({ success: true, affected }, 200);
 });
