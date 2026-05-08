@@ -173,9 +173,12 @@ peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
       GROUP_CONCAT(DISTINCT e.inbox) AS recipientsCsv,
       EXISTS(
         SELECT 1 FROM ${attachments} a
-        JOIN ${emails} e2 ON e2.id = a.email_id
-        WHERE e2.person_id = s.id
-        AND a.content_id IS NULL
+        WHERE (
+          a.email_id IN (SELECT e2.id FROM ${emails} e2 WHERE e2.person_id = s.id)
+          AND a.content_id IS NULL
+        ) OR (
+          a.sent_email_id IN (SELECT se.id FROM ${sentEmails} se WHERE se.person_id = s.id)
+        )
       ) AS hasAttachment
     FROM ${activity} e
     JOIN ${people} s ON s.id = e.person_id

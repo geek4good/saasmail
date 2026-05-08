@@ -1,8 +1,12 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { createEmailSender } from "../lib/email-sender";
+import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES } from "../lib/attachment-limits";
+import type { EmailAttachment } from "../lib/email-sender";
 import { sentEmails } from "../db/sent-emails.schema";
+import { attachments } from "../db/attachments.schema";
 import { people } from "../db/people.schema";
 import { emails } from "../db/emails.schema";
 import { json201Response } from "../lib/helpers";
@@ -33,6 +37,73 @@ const SentEmailResponseSchema = z.object({
   status: z.string(),
 });
 
+function extractFiles(body: Record<string, unknown>): { files: File[]; error: string | null } {
+  const raw = body["attachments"];
+  const files: File[] = raw
+    ? (Array.isArray(raw) ? raw : [raw]).filter((f): f is File => f instanceof File)
+    : [];
+  if (files.length > MAX_ATTACHMENTS) {
+    return { files: [], error: `Too many attachments (max ${MAX_ATTACHMENTS})` };
+  }
+  const totalSize = files.reduce((s, f) => s + f.size, 0);
+  if (totalSize > MAX_ATTACHMENT_BYTES) {
+    return { files: [], error: "Attachments exceed 25 MB limit" };
+  }
+  return { files, error: null };
+}
+
+async function filesToAttachments(files: File[]): Promise<EmailAttachment[]> {
+  return Promise.all(
+    files.map(async (f) => ({
+      filename: f.name,
+      contentType: f.type || "application/octet-stream",
+      data: new Uint8Array(await f.arrayBuffer()),
+    })),
+  );
+}
+
+type Db = ReturnType<typeof drizzle>;
+
+async function storeSentAttachments(
+  db: Db,
+  r2: R2Bucket,
+  sentEmailId: string,
+  files: File[],
+  attachmentData: EmailAttachment[],
+  now: number,
+): Promise<void> {
+  const entries = files.map((file, i) => {
+    const attId = nanoid();
+    const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const r2Key = `sent-attachments/${sentEmailId}/${attId}/${safeFilename}`;
+    return { attId, safeFilename, r2Key, file, data: attachmentData[i]! };
+  });
+
+  await Promise.all(
+    entries.map((e) =>
+      r2.put(e.r2Key, e.data.data, {
+        httpMetadata: { contentType: e.data.contentType },
+      }),
+    ),
+  );
+
+  if (entries.length > 0) {
+    await db.insert(attachments).values(
+      entries.map((e) => ({
+        id: e.attId,
+        sentEmailId,
+        emailId: null,
+        contentId: null,
+        filename: e.safeFilename,
+        contentType: e.data.contentType,
+        size: e.file.size,
+        r2Key: e.r2Key,
+        createdAt: now,
+      })),
+    );
+  }
+}
+
 // Compose and send a new email
 const sendEmailRoute = createRoute({
   method: "post",
@@ -42,7 +113,7 @@ const sendEmailRoute = createRoute({
   request: {
     body: {
       content: {
-        "application/json": {
+        "multipart/form-data": {
           schema: SendEmailSchema,
         },
       },
@@ -55,10 +126,30 @@ const sendEmailRoute = createRoute({
 
 sendRouter.openapi(sendEmailRoute, async (c) => {
   const db = c.get("db");
-  const { to, fromAddress, subject, bodyHtml, bodyText } = c.req.valid("json");
+  const body = await c.req.parseBody({ all: true });
+
+  let parsed: z.infer<typeof SendEmailSchema>;
+  try {
+    parsed = SendEmailSchema.parse({
+      to: body.to,
+      fromAddress: body.fromAddress,
+      subject: body.subject,
+      bodyHtml: body.bodyHtml,
+      bodyText: body.bodyText || undefined,
+    });
+  } catch {
+    return c.json({ error: "Invalid request body" }, 400);
+  }
+
+  const { to, fromAddress, subject, bodyHtml, bodyText } = parsed;
   const allowed = c.get("allowedInboxes")!;
   assertInboxAllowed(allowed, fromAddress);
+
+  const { files, error: attachErr } = extractFiles(body as Record<string, unknown>);
+  if (attachErr) return c.json({ error: attachErr }, 400);
+
   const now = Math.floor(Date.now() / 1000);
+  const attachments = await filesToAttachments(files);
 
   const messageId = generateMessageId(fromAddress);
   const sender = createEmailSender(c.env);
@@ -70,6 +161,7 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
     html: bodyHtml,
     text: bodyText,
     headers: { "Message-ID": messageId },
+    attachments,
   });
 
   // Find or create the person row for this recipient. Composing to a brand-new
@@ -125,6 +217,8 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
     createdAt: now,
   });
 
+  await storeSentAttachments(db, c.env.R2, id, files, attachments, now);
+
   // Cancel any active sequences for this recipient
   await cancelSequencesForPerson(db, personId);
 
@@ -148,13 +242,13 @@ const replyEmailRoute = createRoute({
     params: z.object({ emailId: z.string() }),
     body: {
       content: {
-        "application/json": {
+        "multipart/form-data": {
           schema: z.object({
             bodyHtml: z.string().optional(),
             bodyText: z.string().optional(),
             fromAddress: z.string().email(),
             templateSlug: z.string().optional(),
-            variables: z.record(z.string(), z.string()).optional(),
+            variables: z.string().optional(),
           }),
         },
       },
@@ -168,11 +262,27 @@ const replyEmailRoute = createRoute({
 sendRouter.openapi(replyEmailRoute, async (c) => {
   const db = c.get("db");
   const { emailId } = c.req.valid("param");
-  const { bodyHtml, bodyText, fromAddress, templateSlug, variables } =
-    c.req.valid("json");
+  const body = await c.req.parseBody({ all: true });
+
+  const fromAddress = String(body.fromAddress ?? "");
+  const bodyHtml = body.bodyHtml ? String(body.bodyHtml) : undefined;
+  const bodyText = body.bodyText ? String(body.bodyText) : undefined;
+  const templateSlug = body.templateSlug ? String(body.templateSlug) : undefined;
+  let variables: Record<string, string> = {};
+  if (body.variables && typeof body.variables === "string") {
+    try {
+      variables = JSON.parse(body.variables);
+    } catch {
+      return c.json({ error: "Invalid variables JSON" }, 400);
+    }
+  }
+
   const allowed = c.get("allowedInboxes")!;
   assertInboxAllowed(allowed, fromAddress);
   const now = Math.floor(Date.now() / 1000);
+
+  const { files, error: attachErr } = extractFiles(body as Record<string, unknown>);
+  if (attachErr) return c.json({ error: attachErr }, 400);
 
   // Resolve the original across both received and sent tables.
   const receivedRow = await db
@@ -240,13 +350,12 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
     }
 
     const template = templateRows[0];
-    const vars = variables ?? {};
 
     // Validate required variables
     const subjectVars = extractVariables(template.subject);
     const bodyVars = extractVariables(template.bodyHtml);
     const requiredVars = Array.from(new Set([...subjectVars, ...bodyVars]));
-    const missingVars = requiredVars.filter((v) => !(v in vars));
+    const missingVars = requiredVars.filter((v) => !(v in variables));
 
     if (missingVars.length > 0) {
       return c.json(
@@ -259,8 +368,8 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
       );
     }
 
-    finalSubject = interpolate(template.subject, vars);
-    finalBodyHtml = interpolate(template.bodyHtml, vars);
+    finalSubject = interpolate(template.subject, variables);
+    finalBodyHtml = interpolate(template.bodyHtml, variables);
   } else if (bodyHtml) {
     // Freeform reply
     finalSubject = origSubject?.startsWith("Re: ")
@@ -273,6 +382,8 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
       400,
     );
   }
+
+  const attachments = await filesToAttachments(files);
 
   const messageId = generateMessageId(fromAddress);
   const sender = createEmailSender(c.env);
@@ -289,6 +400,7 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
         ? { "In-Reply-To": origInReplyToMessageId }
         : {}),
     },
+    attachments,
   });
 
   // Store sent email
@@ -308,6 +420,8 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
     sentAt: now,
     createdAt: now,
   });
+
+  await storeSentAttachments(db, c.env.R2, id, files, attachments, now);
 
   // Cancel any active sequences for this person
   await cancelSequencesForPerson(db, origPersonId);

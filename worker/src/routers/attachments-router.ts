@@ -3,6 +3,22 @@ import { eq } from "drizzle-orm";
 import { attachments } from "../db/attachments.schema";
 import type { Variables } from "../variables";
 
+/**
+ * Build a Content-Disposition header value that safely encodes filenames
+ * containing special characters per RFC 5987.
+ *
+ * Two filename parameters are emitted:
+ *  - `filename="..."` — ASCII-safe fallback (quotes, backslashes, and
+ *    line-breaks are replaced with underscores) for older clients.
+ *  - `filename*=UTF-8''...` — the original name percent-encoded per
+ *    RFC 5987, which modern clients prefer.
+ */
+function contentDisposition(filename: string, disposition = "attachment"): string {
+  const safe = filename.replace(/["\\\r\n]/g, "_");
+  const encoded = encodeURIComponent(filename);
+  return `${disposition}; filename="${safe}"; filename*=UTF-8''${encoded}`;
+}
+
 export const attachmentsRouter = new OpenAPIHono<{
   Bindings: CloudflareBindings;
   Variables: Variables;
@@ -43,7 +59,7 @@ attachmentsRouter.openapi(downloadRoute, async (c) => {
   return new Response(object.body, {
     headers: {
       "Content-Type": att[0].contentType,
-      "Content-Disposition": `attachment; filename="${att[0].filename}"`,
+      "Content-Disposition": contentDisposition(att[0].filename),
       "Content-Length": att[0].size.toString(),
     },
   });
@@ -85,7 +101,7 @@ attachmentsRouter.openapi(inlineRoute, async (c) => {
   return new Response(object.body, {
     headers: {
       "Content-Type": att[0].contentType,
-      "Content-Disposition": "inline",
+      "Content-Disposition": contentDisposition(att[0].filename, "inline"),
       "Content-Length": att[0].size.toString(),
       "Cache-Control": "public, max-age=31536000, immutable",
     },

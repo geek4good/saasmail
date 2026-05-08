@@ -35,9 +35,7 @@ export async function deleteEmailWithAttachments(
       .from(attachments)
       .where(eq(attachments.emailId, emailId));
 
-    for (const att of atts) {
-      await r2.delete(att.r2Key);
-    }
+    await Promise.all(atts.map((att) => r2.delete(att.r2Key)));
 
     // Delete attachment DB records
     await db.delete(attachments).where(eq(attachments.emailId, emailId));
@@ -68,9 +66,20 @@ export async function deleteEmailWithAttachments(
     .limit(1);
 
   if (sent.length > 0) {
-    // Sent emails don't have attachments in the current schema
+    // Delete R2 objects and DB records for sent attachments
+    const sentAtts = await db
+      .select({ r2Key: attachments.r2Key })
+      .from(attachments)
+      .where(eq(attachments.sentEmailId, emailId));
+
+    await Promise.all(sentAtts.map((att) => r2.delete(att.r2Key)));
+
+    await db
+      .delete(attachments)
+      .where(eq(attachments.sentEmailId, emailId));
     await db.delete(sentEmails).where(eq(sentEmails.id, emailId));
-    return { success: true, attachmentsDeleted: 0 };
+
+    return { success: true, attachmentsDeleted: sentAtts.length };
   }
 
   return null;

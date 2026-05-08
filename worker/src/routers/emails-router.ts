@@ -159,55 +159,37 @@ emailsRouter.openapi(listPersonEmailsRoute, async (c) => {
   const paginated = merged.slice(offset, offset + limit);
 
   // Get attachment counts for received emails
-  const receivedIds = paginated
-    .filter((e) => e.type === "received")
-    .map((e) => e.id);
-
-  let attachmentCounts: Record<string, number> = {};
-  if (receivedIds.length > 0) {
-    const counts = await db
-      .select({
-        emailId: attachments.emailId,
-        count: sql<number>`COUNT(*)`,
-      })
-      .from(attachments)
-      .where(
-        sql`${attachments.emailId} IN (${sql.join(
-          receivedIds.map((id) => sql`${id}`),
-          sql`,`,
-        )})`,
-      )
-      .groupBy(attachments.emailId);
-
-    for (const row of counts) {
-      attachmentCounts[row.emailId] = row.count;
-    }
-  }
-
-  // Fetch attachment details for received emails
+  // Fetch attachment details for all emails (both received and sent)
+  const allEmailIds = paginated.map((e) => e.id);
   let attachmentDetails: Record<string, any[]> = {};
-  if (receivedIds.length > 0) {
+
+  if (allEmailIds.length > 0) {
     const attRows = await db
       .select()
       .from(attachments)
       .where(
-        sql`${attachments.emailId} IN (${sql.join(
-          receivedIds.map((id) => sql`${id}`),
+        sql`(${attachments.emailId} IN (${sql.join(
+          allEmailIds.map((id) => sql`${id}`),
           sql`,`,
-        )})`,
+        )}) OR ${attachments.sentEmailId} IN (${sql.join(
+          allEmailIds.map((id) => sql`${id}`),
+          sql`,`,
+        )}))`,
       );
 
     for (const att of attRows) {
-      if (!attachmentDetails[att.emailId]) {
-        attachmentDetails[att.emailId] = [];
+      const owner = att.emailId ?? att.sentEmailId;
+      if (!owner) continue;
+      if (!attachmentDetails[owner]) {
+        attachmentDetails[owner] = [];
       }
-      attachmentDetails[att.emailId].push(att);
+      attachmentDetails[owner].push(att);
     }
   }
 
   const result = paginated.map((e) => ({
     ...e,
-    attachmentCount: attachmentCounts[e.id] ?? 0,
+    attachmentCount: (attachmentDetails[e.id] ?? []).length,
     attachments: attachmentDetails[e.id] ?? [],
   }));
 

@@ -13,7 +13,6 @@ import { emails } from "../db/emails.schema";
 import { sentEmails } from "../db/sent-emails.schema";
 import { people } from "../db/people.schema";
 import { eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 
 describe("DELETE /api/emails/:id", () => {
   let apiKey: string;
@@ -143,6 +142,61 @@ describe("DELETE /api/emails/:id", () => {
       .from(sentEmails)
       .where(eq(sentEmails.id, "se1"));
     expect(rows.length).toBe(0);
+  });
+
+  it("deletes a sent email and its attachment DB records", async () => {
+    await createTestPerson({ id: "s1" });
+
+    const db = getDb();
+    const now = Math.floor(Date.now() / 1000);
+    await db.insert(sentEmails).values({
+      id: "se1",
+      personId: "s1",
+      fromAddress: "me@saasmail.test",
+      toAddress: "alice@example.com",
+      subject: "Test",
+      bodyHtml: "<p>Hi</p>",
+      bodyText: "Hi",
+      status: "sent",
+      sentAt: now,
+      createdAt: now,
+    });
+
+    await db.insert(attachments).values({
+      id: "att-sent-1",
+      sentEmailId: "se1",
+      emailId: null,
+      filename: "report.pdf",
+      contentType: "application/pdf",
+      size: 2048,
+      r2Key: "sent-attachments/se1/report.pdf",
+      contentId: null,
+      createdAt: now,
+    });
+
+    const res = await authFetch("/api/emails/se1", {
+      apiKey,
+      method: "DELETE",
+    });
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.attachmentsDeleted).toBe(1);
+
+    // Sent email should be gone
+    const sentRows = await db
+      .select()
+      .from(sentEmails)
+      .where(eq(sentEmails.id, "se1"));
+    expect(sentRows.length).toBe(0);
+
+    // Attachment DB record should be gone
+    const attRows = await db
+      .select()
+      .from(attachments)
+      .where(eq(attachments.sentEmailId, "se1"));
+    expect(attRows.length).toBe(0);
   });
 
   it("returns 404 for non-existent email", async () => {
