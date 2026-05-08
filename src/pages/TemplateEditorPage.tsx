@@ -198,7 +198,6 @@ export default function TemplateEditorPage() {
                     ? "Slug can't change once a template is created."
                     : "Lowercase letters, numbers, hyphens."
                 }
-                mono
               >
                 <input
                   value={slugValue}
