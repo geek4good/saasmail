@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X, Send, AtSign, PenSquare, Type } from "lucide-react";
+import { PenSquare, Send, X } from "lucide-react";
 import TiptapEditor from "@/components/TiptapEditor";
 import CcInput from "@/components/CcInput";
+import {
+  TrayMaximizeButton,
+  TrayMetaRow,
+  trayContentClass,
+} from "@/components/Tray";
 import { sendEmail, fetchStats, type CcEntry } from "@/lib/api";
 import { getFromLabel } from "@/lib/format";
 
@@ -58,6 +63,9 @@ export default function ComposeModal({
   const [signatureHtml, setSignatureHtml] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  // Compact tray vs. full-viewport. Toggled by the maximize button in
+  // the header; reset every time the drawer reopens.
+  const [fullscreen, setFullscreen] = useState(false);
 
   // Domains we own — used for the lime/neutral CC chip color.
   const internalDomains = useMemo(() => {
@@ -99,6 +107,7 @@ export default function ComposeModal({
       setBodyHtml("");
       setSignatureHtml(null);
       setError("");
+      setFullscreen(false);
     }
     // We intentionally don't track `fromAddress` here — it's only used
     // as a sticky fallback above, not as a trigger to re-run.
@@ -167,51 +176,48 @@ export default function ComposeModal({
           onKeyDown={handleKeyDown}
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
-          className="tray-content fixed bottom-0 right-0 z-50 flex h-[90vh] w-full flex-col rounded-t-[14px] bg-card shadow-[0_24px_60px_-15px_rgba(15,23,42,0.35)] ring-1 ring-border focus:outline-none sm:right-6 sm:h-[640px] sm:max-h-[calc(100vh-2rem)] sm:w-[640px]"
+          className={trayContentClass({ fullscreen, width: "compose" })}
         >
-          {/* Header */}
-          <div className="shrink-0 border-b border-border bg-card px-6 pb-4 pt-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-start gap-3">
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-                  style={{
-                    backgroundColor: "rgba(124, 92, 252, 0.12)",
-                    color: "#5b3ce6",
-                  }}
-                >
-                  <PenSquare size={18} />
-                </span>
-                <div className="min-w-0">
-                  <DialogPrimitive.Title className="text-lg font-extrabold tracking-tight text-text-primary">
-                    Compose
-                  </DialogPrimitive.Title>
-                  <p className="mt-0.5 truncate text-sm font-light text-text-tertiary">
-                    Send a new email from one of your inboxes
-                  </p>
-                </div>
-              </div>
+          {/* Slim single-row header — title + max/close. */}
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 pl-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <PenSquare
+                size={13}
+                className="shrink-0"
+                style={{ color: "#7c5cfc" }}
+                aria-hidden
+              />
+              <DialogPrimitive.Title className="truncate text-sm font-semibold text-text-primary">
+                {to ? `New message · ${to}` : "New message"}
+              </DialogPrimitive.Title>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <TrayMaximizeButton
+                fullscreen={fullscreen}
+                onToggle={() => setFullscreen((v) => !v)}
+              />
               <DialogPrimitive.Close
-                className="shrink-0 rounded-[8px] p-1.5 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
                 aria-label="Close"
               >
-                <X size={18} />
+                <X size={14} />
               </DialogPrimitive.Close>
             </div>
           </div>
 
-          {/* Metadata: From / To / Subject */}
-          <div className="shrink-0 space-y-1 border-b border-border bg-bg-subtle/40 px-6 py-3">
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-                <AtSign size={11} />
-                From
-              </span>
+          {/* Compact metadata: From / To / Cc / Subject. Each field is
+              a single inline row with no grid label column — keeps the
+              chrome closer to ~150px so the body has more room. */}
+          <div
+            className="shrink-0 divide-y divide-border/60 border-b border-border bg-bg-subtle/30"
+            data-testid="compose-metadata"
+          >
+            <TrayMetaRow label="From">
               <select
                 value={fromAddress}
                 onChange={(e) => setFromAddress(e.target.value)}
                 required
-                className="rounded-[6px] border border-border bg-card px-2 py-1.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-text-primary/15"
+                className="w-full bg-transparent py-2 pr-3 text-sm text-text-primary outline-none"
               >
                 {recipients.map((r) => (
                   <option key={r} value={r}>
@@ -219,15 +225,8 @@ export default function ComposeModal({
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <label
-                htmlFor="compose-to"
-                className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary"
-              >
-                <Send size={11} />
-                To
-              </label>
+            </TrayMetaRow>
+            <TrayMetaRow label="To" htmlFor="compose-to">
               <input
                 id="compose-to"
                 type="email"
@@ -236,28 +235,18 @@ export default function ComposeModal({
                 required
                 placeholder="recipient@example.com"
                 aria-label="To"
-                className="rounded-[6px] border border-border bg-card px-2 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:ring-2 focus:ring-text-primary/15"
+                className="w-full bg-transparent py-2 pr-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary"
               />
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-start gap-3 py-1">
-              <span className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-                Cc
-              </span>
+            </TrayMetaRow>
+            <TrayMetaRow label="Cc">
               <CcInput
                 value={cc}
                 onChange={setCc}
                 internalDomains={internalDomains}
                 testId="compose-cc-input"
               />
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <label
-                htmlFor="compose-subject"
-                className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary"
-              >
-                <Type size={11} />
-                Subject
-              </label>
+            </TrayMetaRow>
+            <TrayMetaRow label="Subject" htmlFor="compose-subject">
               <input
                 id="compose-subject"
                 value={subject}
@@ -265,67 +254,67 @@ export default function ComposeModal({
                 required
                 placeholder="What's it about?"
                 aria-label="Subject"
-                className="rounded-[6px] border border-border bg-card px-2 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:ring-2 focus:ring-text-primary/15"
+                className="w-full bg-transparent py-2 pr-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary"
               />
-            </div>
+            </TrayMetaRow>
           </div>
 
-          {/* Body */}
+          {/* Body — no min-height, just flex-1 so the editor fills the
+              tray. The smooth-scroll wrapper keeps long drafts scrollable. */}
           <div
-            className="smooth-scroll min-h-0 flex-1 overflow-y-auto bg-card"
+            className="smooth-scroll flex min-h-0 flex-1 flex-col overflow-y-auto bg-card px-4 py-3 sm:px-5"
             data-testid="compose-body"
           >
-            <div className="flex h-full min-h-[320px] flex-col p-6">
-              <TiptapEditor content={bodyHtml} onUpdate={setBodyHtml} />
-              {signatureHtml && (
-                <div
-                  data-signature
-                  data-testid="compose-signature-preview"
-                  className="mt-4 border-t border-border/60 pt-3 opacity-70"
-                  // Read-only signature preview. Auto-attached at send time;
-                  // edited via the admin Inboxes page rather than inline.
-                  dangerouslySetInnerHTML={{ __html: signatureHtml }}
-                />
-              )}
-            </div>
+            <TiptapEditor content={bodyHtml} onUpdate={setBodyHtml} />
+            {signatureHtml && (
+              <div
+                data-signature
+                data-testid="compose-signature-preview"
+                className="mt-4 border-t border-border/60 pt-3 opacity-70"
+                // Read-only signature preview. Auto-attached at send time;
+                // edited via the admin Inboxes page rather than inline.
+                dangerouslySetInnerHTML={{ __html: signatureHtml }}
+              />
+            )}
           </div>
 
-          {/* Footer */}
-          <div className="shrink-0 border-t border-border bg-card px-6 py-3">
-            {error && (
-              <p className="mb-2 text-xs text-destructive" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <p className="hidden text-[11px] font-light text-text-tertiary sm:block">
-                <kbd className="rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
-                  ⌘
-                </kbd>
-                <kbd className="ml-1 rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
-                  Enter
-                </kbd>
-                <span className="ml-1.5">to send</span>
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-[6px] border border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  data-testid="compose-send-button"
-                  onClick={handleSend}
-                  disabled={sending || bodyIsEmpty || !to}
-                  className="inline-flex items-center gap-1.5 rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Send size={12} />
-                  {sending ? "Sending…" : "Send"}
-                </button>
-              </div>
+          {/* Slim footer — single row, just send + cancel + hint. */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 py-2.5 sm:px-5">
+            <div className="min-w-0 truncate text-[11px] font-light text-text-tertiary">
+              {error ? (
+                <span className="text-destructive" role="alert">
+                  {error}
+                </span>
+              ) : (
+                <span className="hidden sm:inline">
+                  <kbd className="rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
+                    ⌘
+                  </kbd>
+                  <kbd className="ml-1 rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
+                    Enter
+                  </kbd>{" "}
+                  to send
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-[6px] border border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                data-testid="compose-send-button"
+                onClick={handleSend}
+                disabled={sending || bodyIsEmpty || !to}
+                className="inline-flex items-center gap-1.5 rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={12} />
+                {sending ? "Sending…" : "Send"}
+              </button>
             </div>
           </div>
         </DialogPrimitive.Content>

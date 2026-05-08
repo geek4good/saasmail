@@ -3,7 +3,6 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   X,
   Send,
-  AtSign,
   Reply as ReplyIcon,
   FileText,
   Sparkles,
@@ -13,6 +12,11 @@ import {
 } from "lucide-react";
 import TiptapEditor from "@/components/TiptapEditor";
 import CcInput from "@/components/CcInput";
+import {
+  TrayMaximizeButton,
+  TrayMetaRow,
+  trayContentClass,
+} from "@/components/Tray";
 import {
   replyToEmail,
   fetchTemplates,
@@ -75,6 +79,8 @@ export default function ReplyComposer({
   const [signatureHtml, setSignatureHtml] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  // Compact tray vs. full-viewport. Toggled by the maximize button.
+  const [fullscreen, setFullscreen] = useState(false);
 
   // Sync the signature trail to the active From inbox.
   useEffect(() => {
@@ -248,50 +254,43 @@ export default function ReplyComposer({
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           data-testid="reply-composer"
-          className="tray-content fixed bottom-0 right-0 z-50 flex h-[90vh] w-full flex-col rounded-t-[14px] bg-card shadow-[0_24px_60px_-15px_rgba(15,23,42,0.35)] ring-1 ring-border focus:outline-none sm:right-6 sm:h-[640px] sm:max-h-[calc(100vh-2rem)] sm:w-[640px]"
+          className={trayContentClass({ fullscreen, width: "compose" })}
         >
-          {/* Header */}
-          <div className="shrink-0 border-b border-border bg-card px-6 pb-4 pt-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-start gap-3">
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-                  style={{
-                    backgroundColor: "rgba(124, 92, 252, 0.12)",
-                    color: "#5b3ce6",
-                  }}
-                >
-                  <ReplyIcon size={18} />
-                </span>
-                <div className="min-w-0">
-                  <DialogPrimitive.Title className="text-lg font-extrabold tracking-tight text-text-primary">
-                    Reply
-                  </DialogPrimitive.Title>
-                  <p className="mt-0.5 truncate text-sm font-light text-text-tertiary">
-                    To {recipientLabel}
-                  </p>
-                </div>
-              </div>
+          {/* Slim single-row header. */}
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 pl-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <ReplyIcon
+                size={13}
+                className="shrink-0"
+                style={{ color: "#7c5cfc" }}
+                aria-hidden
+              />
+              <DialogPrimitive.Title className="truncate text-sm font-semibold text-text-primary">
+                Reply · {recipientLabel}
+              </DialogPrimitive.Title>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <ModePillToggle tab={tab} onTab={setTab} />
+              <TrayMaximizeButton
+                fullscreen={fullscreen}
+                onToggle={() => setFullscreen((v) => !v)}
+              />
               <DialogPrimitive.Close
-                className="shrink-0 rounded-[8px] p-1.5 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
                 aria-label="Close"
               >
-                <X size={18} />
+                <X size={14} />
               </DialogPrimitive.Close>
             </div>
           </div>
 
-          {/* Metadata: From / To */}
-          <div className="shrink-0 border-b border-border bg-bg-subtle/40 px-6 py-3">
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-                <AtSign size={11} />
-                From
-              </span>
+          {/* Compact metadata: From / To / Cc. */}
+          <div className="shrink-0 divide-y divide-border/60 border-b border-border bg-bg-subtle/30">
+            <TrayMetaRow label="From">
               <select
                 value={fromAddress}
                 onChange={(e) => setFromAddress(e.target.value)}
-                className="rounded-[6px] border border-border bg-card px-2 py-1.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-text-primary/15"
+                className="w-full bg-transparent py-2 pr-3 text-sm text-text-primary outline-none"
               >
                 {recipients.map((r) => (
                   <option key={r} value={r}>
@@ -299,51 +298,26 @@ export default function ReplyComposer({
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-                <Send size={11} />
-                To
-              </span>
-              <span className="truncate text-sm text-text-primary">
+            </TrayMetaRow>
+            <TrayMetaRow label="To">
+              <span className="block truncate py-2 pr-3 text-sm text-text-primary">
                 {recipientLabel}
               </span>
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-start gap-3 py-1">
-              <span className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-                Cc
-              </span>
+            </TrayMetaRow>
+            <TrayMetaRow label="Cc">
               <CcInput
                 value={cc}
                 onChange={setCc}
                 internalDomains={internalDomains}
                 testId="reply-cc-input"
               />
-            </div>
+            </TrayMetaRow>
           </div>
 
-          {/* Mode toggle */}
-          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-6 py-2.5">
-            <div className="inline-flex rounded-[8px] bg-bg-muted/70 p-0.5 ring-1 ring-border">
-              <ModeButton
-                active={tab === "freeform"}
-                onClick={() => setTab("freeform")}
-                icon={Sparkles}
-                label="Freeform"
-              />
-              <ModeButton
-                active={tab === "template"}
-                onClick={() => setTab("template")}
-                icon={FileText}
-                label="Template"
-              />
-            </div>
-          </div>
-
-          {/* Body */}
-          <div className="smooth-scroll min-h-0 flex-1 overflow-y-auto bg-card">
+          {/* Body — flex-1, no min-height pin. */}
+          <div className="smooth-scroll flex min-h-0 flex-1 flex-col overflow-y-auto bg-card">
             {tab === "freeform" ? (
-              <div className="flex h-full min-h-[320px] flex-col gap-4 p-6">
+              <div className="flex flex-1 flex-col gap-3 px-4 py-3 sm:px-5">
                 {/* Thread context — what you're replying to */}
                 {originalEmail && (
                   <ThreadContext
@@ -362,7 +336,7 @@ export default function ReplyComposer({
                     deleted. You can still send your reply.
                   </div>
                 )}
-                <div className="min-h-[260px] flex-1">
+                <div className="flex-1">
                   <TiptapEditor
                     content={bodyHtml}
                     onUpdate={setBodyHtml}
@@ -379,7 +353,7 @@ export default function ReplyComposer({
                 </div>
               </div>
             ) : (
-              <div className="space-y-4 p-6">
+              <div className="space-y-4 px-4 py-3 sm:px-5">
                 {templatesLoading ? (
                   <p className="text-sm font-light text-text-tertiary">
                     Loading templates…
@@ -465,42 +439,43 @@ export default function ReplyComposer({
             )}
           </div>
 
-          {/* Footer */}
-          <div className="shrink-0 border-t border-border bg-bg-subtle/40 px-6 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] font-light text-text-tertiary">
-                {error ? (
-                  <span className="text-destructive">{error}</span>
-                ) : (
-                  <>
-                    <kbd className="rounded border border-border bg-card px-1 text-[10px] font-medium text-text-secondary">
-                      ⌘
-                    </kbd>{" "}
-                    +{" "}
-                    <kbd className="rounded border border-border bg-card px-1 text-[10px] font-medium text-text-secondary">
-                      Enter
-                    </kbd>{" "}
-                    to send
-                  </>
-                )}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onClose}
-                  className="rounded-[8px] px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSend}
-                  data-testid="reply-send-button"
-                  disabled={sending}
-                  className="inline-flex items-center gap-1.5 rounded-[8px] bg-text-primary px-4 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Send size={12} />
-                  {sending ? "Sending…" : "Send reply"}
-                </button>
-              </div>
+          {/* Slim footer — single row, send + cancel + hint. */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 py-2.5 sm:px-5">
+            <div className="min-w-0 truncate text-[11px] font-light text-text-tertiary">
+              {error ? (
+                <span className="text-destructive" role="alert">
+                  {error}
+                </span>
+              ) : (
+                <span className="hidden sm:inline">
+                  <kbd className="rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
+                    ⌘
+                  </kbd>
+                  <kbd className="ml-1 rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
+                    Enter
+                  </kbd>{" "}
+                  to send
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-[6px] border border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                data-testid="reply-send-button"
+                disabled={sending}
+                className="inline-flex items-center gap-1.5 rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={12} />
+                {sending ? "Sending…" : "Send reply"}
+              </button>
             </div>
           </div>
         </DialogPrimitive.Content>
@@ -509,26 +484,54 @@ export default function ReplyComposer({
   );
 }
 
-interface ModeButtonProps {
+/**
+ * Compact Freeform/Template toggle that lives in the slim header
+ * instead of taking its own row. Mirrors the pill-toggle aesthetic
+ * used by the Templates editor's view switch.
+ */
+function ModePillToggle({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
+  return (
+    <div className="mr-1 inline-flex rounded-[6px] bg-bg-muted/70 p-0.5 ring-1 ring-border">
+      <ModePill
+        active={tab === "freeform"}
+        onClick={() => onTab("freeform")}
+        icon={Sparkles}
+        label="Freeform"
+      />
+      <ModePill
+        active={tab === "template"}
+        onClick={() => onTab("template")}
+        icon={FileText}
+        label="Template"
+      />
+    </div>
+  );
+}
+
+function ModePill({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
   active: boolean;
   onClick: () => void;
   icon: React.ElementType;
   label: string;
-}
-function ModeButton({ active, onClick, icon: Icon, label }: ModeButtonProps) {
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1 text-xs font-medium transition-all",
+        "inline-flex h-6 items-center gap-1 rounded-[4px] px-2 text-[11px] font-medium transition-all",
         active
           ? "bg-card text-text-primary shadow-sm"
           : "text-text-secondary hover:text-text-primary",
       )}
     >
-      <Icon size={12} />
-      {label}
+      <Icon size={11} />
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }

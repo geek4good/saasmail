@@ -8,13 +8,15 @@ import {
   CheckCircle2,
   Inbox as InboxIcon,
   Send,
-  Hash,
-  Calendar,
-  AtSign,
   FileText,
   Code,
 } from "lucide-react";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
+import {
+  TrayMaximizeButton,
+  TrayMetaRow,
+  trayContentClass,
+} from "@/components/Tray";
 import type { Email } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -48,31 +50,6 @@ function avatarColor(seed: string) {
   return palette[h % palette.length];
 }
 
-interface DetailRowProps {
-  icon: React.ElementType;
-  label: string;
-  value: React.ReactNode;
-  monospace?: boolean;
-}
-function DetailRow({ icon: Icon, label, value, monospace }: DetailRowProps) {
-  return (
-    <div className="grid grid-cols-[80px_1fr] items-baseline gap-3 py-1">
-      <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-        <Icon size={11} />
-        {label}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 break-words text-sm text-text-primary",
-          monospace && "font-mono text-xs",
-        )}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
 export default function EmailHtmlModal({
   email,
   open,
@@ -80,11 +57,13 @@ export default function EmailHtmlModal({
 }: EmailHtmlModalProps) {
   const [view, setView] = useState<"rendered" | "plain">("rendered");
   const [copied, setCopied] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   // Reset internal state when the email changes
   useMemo(() => {
     setView("rendered");
     setCopied(false);
+    setFullscreen(false);
   }, [email?.id]);
 
   if (!email) return null;
@@ -139,70 +118,72 @@ export default function EmailHtmlModal({
         <DialogPrimitive.Content
           onInteractOutside={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
-          className="tray-content fixed bottom-0 right-0 z-50 flex h-[90vh] w-full flex-col rounded-t-[14px] bg-card shadow-[0_24px_60px_-15px_rgba(15,23,42,0.35)] ring-1 ring-border focus:outline-none sm:right-6 sm:h-[720px] sm:max-h-[calc(100vh-2rem)] sm:w-[720px]"
+          className={trayContentClass({ fullscreen, width: "viewer" })}
         >
-          {/* Header */}
-          <div className="shrink-0 border-b border-border bg-card px-6 pb-4 pt-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-start gap-3">
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-                  style={{ backgroundColor: color.bg, color: color.fg }}
-                >
-                  {avatarInitial(senderForAvatar)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <DialogPrimitive.Title className="truncate text-lg font-extrabold tracking-tight text-text-primary">
-                    {email.subject || "(no subject)"}
-                  </DialogPrimitive.Title>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                        isSent
-                          ? "bg-bg-muted text-text-secondary"
-                          : "bg-violet/10",
-                      )}
-                      style={!isSent ? { color: "#7c5cfc" } : undefined}
-                    >
-                      {isSent ? <Send size={10} /> : <InboxIcon size={10} />}
-                      {isSent ? "Sent" : "Received"}
-                    </span>
-                    <span className="font-light text-text-tertiary">
-                      {fullDate} · {fullTime}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          {/* Slim header — avatar + subject inline. */}
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-card pl-3 pr-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                style={{ backgroundColor: color.bg, color: color.fg }}
+              >
+                {avatarInitial(senderForAvatar)}
+              </span>
+              <DialogPrimitive.Title className="truncate text-sm font-semibold text-text-primary">
+                {email.subject || "(no subject)"}
+              </DialogPrimitive.Title>
+              <span
+                className={cn(
+                  "hidden shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider sm:inline-flex",
+                  isSent ? "bg-bg-muted text-text-secondary" : "bg-violet/10",
+                )}
+                style={!isSent ? { color: "#7c5cfc" } : undefined}
+              >
+                {isSent ? <Send size={9} /> : <InboxIcon size={9} />}
+                {isSent ? "Sent" : "Received"}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <TrayMaximizeButton
+                fullscreen={fullscreen}
+                onToggle={() => setFullscreen((v) => !v)}
+              />
               <DialogPrimitive.Close
-                className="shrink-0 rounded-[8px] p-1.5 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
                 aria-label="Close"
               >
-                <X size={18} />
+                <X size={14} />
               </DialogPrimitive.Close>
             </div>
           </div>
 
-          {/* Metadata */}
-          <div className="shrink-0 border-b border-border bg-bg-subtle/40 px-6 py-3">
-            <DetailRow
-              icon={AtSign}
-              label="From"
-              value={fromAddr || (isSent ? "you" : "—")}
-            />
-            <DetailRow icon={Send} label="To" value={toAddr || "—"} />
-            <DetailRow icon={Hash} label="ID" value={email.id} monospace />
-            <DetailRow
-              icon={Calendar}
-              label="Time"
-              value={ts.toISOString()}
-              monospace
-            />
+          {/* Compact metadata. */}
+          <div className="shrink-0 divide-y divide-border/60 border-b border-border bg-bg-subtle/30">
+            <TrayMetaRow label="From">
+              <span className="block truncate py-2 pr-3 text-sm text-text-primary">
+                {fromAddr || (isSent ? "you" : "—")}
+              </span>
+            </TrayMetaRow>
+            <TrayMetaRow label="To">
+              <span className="block truncate py-2 pr-3 text-sm text-text-primary">
+                {toAddr || "—"}
+              </span>
+            </TrayMetaRow>
+            <TrayMetaRow label="Time">
+              <span className="block truncate py-2 pr-3 text-sm text-text-primary">
+                {fullDate} · {fullTime}
+              </span>
+            </TrayMetaRow>
+            <TrayMetaRow label="ID">
+              <span className="block truncate py-2 pr-3 font-mono text-xs text-text-tertiary">
+                {email.id}
+              </span>
+            </TrayMetaRow>
           </div>
 
           {/* Attachments */}
           {downloadable.length > 0 && (
-            <div className="shrink-0 border-b border-border bg-card px-6 py-3">
+            <div className="shrink-0 border-b border-border bg-card px-4 py-2.5 sm:px-5">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 {downloadable.length} attachment
                 {downloadable.length !== 1 ? "s" : ""}
@@ -235,7 +216,7 @@ export default function EmailHtmlModal({
           )}
 
           {/* Body view toggle + actions */}
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-6 py-2.5">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-4 py-2 sm:px-5">
             <div className="inline-flex rounded-[8px] bg-bg-muted/70 p-0.5 ring-1 ring-border">
               <button
                 onClick={() => setView("rendered")}
@@ -284,24 +265,24 @@ export default function EmailHtmlModal({
           <div className="smooth-scroll min-h-0 flex-1 overflow-y-auto bg-card">
             {view === "rendered" && email.bodyHtml ? (
               <div
-                className="prose prose-sm max-w-none px-8 py-6 text-text-primary [&_a]:text-violet [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-text-secondary [&_p]:my-2"
+                className="prose prose-sm max-w-none px-5 py-4 text-text-primary [&_a]:text-violet [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-text-secondary [&_p]:my-2 sm:px-7 sm:py-5"
                 style={{ "--tw-prose-links": "#7c5cfc" } as React.CSSProperties}
                 dangerouslySetInnerHTML={{
                   __html: sanitizeEmailHtml(email.bodyHtml),
                 }}
               />
             ) : (
-              <pre className="whitespace-pre-wrap break-words px-8 py-6 font-sans text-sm leading-relaxed text-text-primary">
+              <pre className="whitespace-pre-wrap break-words px-5 py-4 font-sans text-sm leading-relaxed text-text-primary sm:px-7 sm:py-5">
                 {plainText || "(empty)"}
               </pre>
             )}
           </div>
 
-          {/* Footer */}
-          <div className="shrink-0 border-t border-border bg-bg-subtle/40 px-6 py-2.5">
+          {/* Slim footer — single-line Esc hint. */}
+          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border bg-card px-4 py-2 sm:px-5">
             <p className="text-[11px] font-light text-text-tertiary">
-              Original message · Press{" "}
-              <kbd className="rounded border border-border bg-card px-1 text-[10px] font-medium text-text-secondary">
+              Press{" "}
+              <kbd className="rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
                 Esc
               </kbd>{" "}
               to close
