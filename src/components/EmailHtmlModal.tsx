@@ -126,10 +126,21 @@ export default function EmailHtmlModal({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={(v) => !v && onClose()}>
+    // Non-modal tray (Gmail-style): the inbox stays interactive while
+    // viewing the original message. Slightly wider than the compose
+    // family because email content is often paragraph-heavy.
+    <DialogPrimitive.Root
+      open={open}
+      modal={false}
+      onOpenChange={(v) => !v && onClose()}
+    >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="drawer-overlay fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px]" />
-        <DialogPrimitive.Content className="drawer-content fixed right-0 top-0 z-50 flex h-full w-full flex-col bg-card shadow-2xl ring-1 ring-border focus:outline-none sm:max-w-[680px]">
+        <DialogPrimitive.Overlay className="tray-overlay fixed inset-0 z-50" />
+        <DialogPrimitive.Content
+          onInteractOutside={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          className="tray-content fixed bottom-0 right-0 z-50 flex h-[90vh] w-full flex-col rounded-t-[14px] bg-card shadow-[0_24px_60px_-15px_rgba(15,23,42,0.35)] ring-1 ring-border focus:outline-none sm:right-6 sm:h-[720px] sm:max-h-[calc(100vh-2rem)] sm:w-[720px]"
+        >
           {/* Header */}
           <div className="shrink-0 border-b border-border bg-card px-6 pb-4 pt-5">
             <div className="flex items-start justify-between gap-3">

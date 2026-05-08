@@ -262,6 +262,45 @@ body {
   animation: drawer-overlay-out 160ms ease-in;
 }
 
+/* Bottom-anchored tray modal (Gmail-style compose).
+   Slides up from the bottom edge, sits a bit off the right side, and
+   leaves the rest of the page interactive. Used for ComposeModal,
+   ReplyComposer, and EmailHtmlModal. Pair with `modal={false}` on
+   DialogPrimitive.Root and a transparent .tray-overlay so the inbox
+   stays clickable while the tray is open. */
+@keyframes tray-slide-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes tray-slide-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+.tray-content[data-state="open"] {
+  animation: tray-slide-in 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.tray-content[data-state="closed"] {
+  animation: tray-slide-out 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* Transparent click-shield. Keeps Radix happy without dimming the
+   page; pointer-events-none lets clicks pass through to the inbox. */
+.tray-overlay {
+  background: transparent;
+  pointer-events: none;
+}
+
 /* Smooth, refined scrollbars on overflow containers.
    Webkit + Firefox styling. Used by the inbox panes for independent,
    non-jarring scroll. */
