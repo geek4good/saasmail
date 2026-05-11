@@ -247,6 +247,52 @@ describe("admin inboxes router", () => {
     expect(row?.signatureHtml).toBe(sig);
   });
 
+  it("PATCH sanitizes hostile signatureHtml before storage", async () => {
+    // Wiring test for the sanitize-signature layer. Full coverage of
+    // the sanitizer's strip rules lives in sanitize-signature.test.ts;
+    // here we just assert the route actually calls it — protects
+    // against someone unwiring sanitization in a future refactor.
+    const { apiKey } = await createTestUser({ role: "admin" });
+    await createTestPerson();
+    await createTestEmail({ recipient: "a@x.com" });
+    const hostile =
+      '<p onclick="alert(1)">hi</p>' +
+      "<script>alert(2)</script>" +
+      '<a href="javascript:alert(3)">x</a>';
+    const res = await authFetch(
+      `/api/admin/inboxes/${encodeURIComponent("a@x.com")}`,
+      {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ signatureHtml: hostile }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { signatureHtml: string | null };
+    expect(body.signatureHtml).not.toMatch(/<script/i);
+    expect(body.signatureHtml).not.toMatch(/\bon\w+\s*=/i);
+    expect(body.signatureHtml).not.toMatch(/href\s*=\s*"javascript:/i);
+    // Benign content survives.
+    expect(body.signatureHtml).toContain("<p>hi</p>");
+  });
+
+  it("PATCH rejects signatureHtml longer than the cap", async () => {
+    const { apiKey } = await createTestUser({ role: "admin" });
+    await createTestPerson();
+    await createTestEmail({ recipient: "a@x.com" });
+    // One byte over the cap is enough — zod fails the schema.
+    const tooLong = "<p>" + "x".repeat(20_001) + "</p>";
+    const res = await authFetch(
+      `/api/admin/inboxes/${encodeURIComponent("a@x.com")}`,
+      {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ signatureHtml: tooLong }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("PATCH with signatureHtml='' clears the stored signature", async () => {
     const { apiKey } = await createTestUser({ role: "admin" });
     const now = Math.floor(Date.now() / 1000);
