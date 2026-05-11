@@ -6,9 +6,16 @@ export interface AuthResults {
   dmarc: string | null;
 }
 
+export interface ParsedEmailAddress {
+  email: string;
+  name: string | null;
+}
+
 export interface ParsedEmail {
   from: { address: string; name: string };
   to: string;
+  /** Additional recipients on the Cc: line, parsed from the MIME headers. */
+  cc: ParsedEmailAddress[];
   subject: string;
   bodyHtml: string | null;
   bodyText: string | null;
@@ -131,12 +138,37 @@ export async function parseEmail(
   const bodyText = parsed.text || null;
   const bodyHtml = parsed.html || null;
 
+  // Extract CC list from the parsed MIME structure. postal-mime exposes
+  // `parsed.cc` as an array of `{ address, name }` (or undefined). We
+  // - filter to entries with a syntactically-valid email (don't trust
+  //   header data — malformed Cc: lines pollute displayed rosters
+  //   and the de-dupe-by-email logic elsewhere),
+  // - lowercase the address so casing variants of the same recipient
+  //   don't fork conversation_id buckets,
+  // - cap the array so a single inbound message can't slam storage
+  //   with thousands of header-entries.
+  const cc: ParsedEmailAddress[] = (
+    (parsed.cc as Array<{ address?: string; name?: string }> | undefined) ?? []
+  )
+    .filter((c): c is { address: string; name?: string } => {
+      if (!c.address || typeof c.address !== "string") return false;
+      // Cheap RFC 5322-ish gate. Defers strict validation to downstream
+      // schemas; we only need to reject the obviously-not-email cases.
+      return /^[^\s<>"@]+@[^\s<>"@]+\.[^\s<>"@]+$/.test(c.address.trim());
+    })
+    .slice(0, 50)
+    .map((c) => ({
+      email: c.address.trim().toLowerCase(),
+      name: c.name && c.name.trim() ? c.name.trim().slice(0, 200) : null,
+    }));
+
   return {
     from: {
       address: parsed.from?.address || message.from,
       name: parsed.from?.name || "",
     },
     to: message.to,
+    cc,
     subject: parsed.subject || "",
     bodyHtml: bodyHtml ? trimQuotedHtml(bodyHtml) : null,
     bodyText: bodyText ? trimQuotedText(bodyText) : null,

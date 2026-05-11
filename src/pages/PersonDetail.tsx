@@ -20,6 +20,9 @@ import ThreadInboxSection, {
   type ThreadInboxGroup,
 } from "@/components/ThreadInboxSection";
 import ChatInboxSection from "@/components/ChatInboxSection";
+import type { ComposePrefill } from "@/pages/ComposeModal";
+import { onEmailSent } from "@/lib/email-events";
+import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 interface PersonDetailProps {
@@ -27,6 +30,12 @@ interface PersonDetailProps {
   onEmailRead: (personId: string) => void;
   onEmailDelete: (personId: string, wasUnread: boolean) => void;
   refreshKey?: number;
+  /**
+   * Called when the user clicks "open in full compose" inside a chat
+   * thread — the chat section computes a prefill (from + to + cc +
+   * subject) so the drawer opens with the reply context applied.
+   */
+  onOpenCompose?: (prefill?: ComposePrefill) => void;
 }
 
 function inboxOf(email: Email): string {
@@ -93,6 +102,7 @@ export default function PersonDetail({
   onEmailRead,
   onEmailDelete,
   refreshKey,
+  onOpenCompose,
 }: PersonDetailProps) {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,6 +210,17 @@ export default function PersonDetail({
     [inboxGroups],
   );
 
+  // Domains we own — used to flag internal vs external CC contacts.
+  // Pulled from sender_identities (the inboxes the operator has set up).
+  const internalDomains = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of senderIdentities) {
+      const at = s.email.lastIndexOf("@");
+      if (at >= 0) set.add(s.email.slice(at + 1).toLowerCase());
+    }
+    return Array.from(set);
+  }, [senderIdentities]);
+
   // Auto-pick the first (most-recent) inbox as active when person/emails load.
   useEffect(() => {
     if (inboxGroups.length === 0) {
@@ -210,6 +231,42 @@ export default function PersonDetail({
       setActiveInbox(inboxGroups[0].inbox);
     }
   }, [inboxGroups, activeInbox]);
+
+  // Listen for the global "email sent" event so we can:
+  //   1) Refetch emails immediately — already happens via the existing
+  //      onSent callbacks in compose surfaces, but the event-based path
+  //      catches sends initiated from anywhere (FAB compose, chat
+  //      quick reply, reply drawer).
+  //   2) Auto-switch the active inbox tab when the user replied from a
+  //      different inbox than the one they were viewing — otherwise the
+  //      sent message lands in a tab they aren't looking at and they
+  //      have no clue what happened.
+  //   3) Toast the user so they have an artifact telling them where the
+  //      reply landed.
+  useEffect(() => {
+    const off = onEmailSent((detail) => {
+      // Always refetch — picks up the new sent_emails row.
+      refetchEmails();
+      const sentInbox = detail.fromAddress;
+      // We only act on this person's inbox tabs. Compose-from-FAB to a
+      // different person fires the same event but isn't relevant here.
+      const isOurInbox = distinctInboxes.includes(sentInbox);
+      if (!isOurInbox) return;
+      const previous = activeInbox;
+      if (previous && previous !== sentInbox) {
+        setActiveInbox(sentInbox);
+        showToast({
+          kind: "info",
+          message: `Reply landed in ${inboxLabel(sentInbox)}`,
+          description: `You were viewing ${inboxLabel(previous)} — switched tabs so you can see it.`,
+          durationMs: 5500,
+        });
+      }
+    });
+    return off;
+    // We intentionally close over the latest activeInbox + inbox list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeInbox, distinctInboxes.join("|")]);
 
   const activeGroup =
     inboxGroups.find((g) => g.inbox === activeInbox) ?? inboxGroups[0] ?? null;
@@ -353,10 +410,12 @@ export default function PersonDetail({
                   key={activeGroup.inbox}
                   group={activeGroup}
                   personEmail={person.email}
+                  internalDomains={internalDomains}
                   onOpenHtml={setHtmlPreviewEmail}
                   onMarkRead={handleMarkRead}
                   onDelete={handleDelete}
                   onSent={refetchEmails}
+                  onOpenCompose={onOpenCompose}
                 />
               );
             }
@@ -365,6 +424,7 @@ export default function PersonDetail({
                 <ThreadInboxSection
                   group={activeGroup}
                   personEmail={person.email}
+                  internalDomains={internalDomains}
                   isOlderExpanded={!!expandedOlder[activeGroup.inbox]}
                   onToggleOlder={() =>
                     setExpandedOlder((prev) => ({
@@ -397,6 +457,7 @@ export default function PersonDetail({
               return target ? replyInboxForEmail(target) : distinctInboxes;
             })()}
             senderIdentities={senderIdentities}
+            internalDomains={internalDomains}
             onClose={() => setReplyToEmailId(null)}
             onSent={refetchEmails}
           />

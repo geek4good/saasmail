@@ -5,6 +5,7 @@ import { createEmailSender } from "../lib/email-sender";
 import { sentEmails } from "../db/sent-emails.schema";
 import { people } from "../db/people.schema";
 import { emails } from "../db/emails.schema";
+import { senderIdentities } from "../db/sender-identities.schema";
 import { json201Response } from "../lib/helpers";
 import { cancelSequencesForPerson } from "../lib/cancel-sequence";
 import { emailTemplates } from "../db/email-templates.schema";
@@ -13,15 +14,64 @@ import type { Variables } from "../variables";
 import { formatFromAddress } from "../lib/format-from-address";
 import { assertInboxAllowed } from "../lib/inbox-permissions";
 import { generateMessageId } from "../lib/message-id";
+import { computeConversationId, externalsOnly } from "../lib/conversation-id";
+
+/**
+ * Fetch the set of "internal" domains (domains owned by our
+ * sender_identities) for the current request — used to derive the
+ * external-only participant list when computing a conversation_id.
+ */
+async function fetchInternalDomains(
+  db: ReturnType<typeof OpenAPIHono.prototype.notFound> extends never
+    ? unknown
+    : unknown,
+): Promise<string[]> {
+  // Loose typing — we just need .select() and .from() to work. The actual
+  // db value comes from c.get("db") which already has the correct type.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = await (db as any)
+    .select({ email: senderIdentities.email })
+    .from(senderIdentities);
+  return Array.from(
+    new Set(
+      rows
+        .map((r: { email: string }) => {
+          const at = r.email.lastIndexOf("@");
+          return at === -1 ? "" : r.email.slice(at + 1).toLowerCase();
+        })
+        .filter(Boolean),
+    ),
+  ) as string[];
+}
 
 export const sendRouter = new OpenAPIHono<{
   Bindings: CloudflareBindings;
   Variables: Variables;
 }>();
 
+const CcEntrySchema = z.object({
+  email: z.string().email(),
+  // Constrain the rendered "Name <addr>" header — long display names
+  // can blow up the wire format and email headers in general.
+  name: z.string().max(200).nullable().optional(),
+});
+type CcEntry = z.infer<typeof CcEntrySchema>;
+
+// Practical cap on CC participants per message. Real-world replies-
+// all rarely exceed a dozen; 50 is a generous ceiling that still
+// blocks address-list spam payloads (stored as JSON in `cc`, then
+// concatenated into outbound headers).
+const MAX_CC_ENTRIES = 50;
+
+/** Format a CC entry as a header-friendly "Name <addr>" string. */
+function formatCc(c: CcEntry): string {
+  return c.name ? `${c.name} <${c.email}>` : c.email;
+}
+
 const SendEmailSchema = z.object({
   to: z.string().email(),
   fromAddress: z.string().email(),
+  cc: z.array(CcEntrySchema).max(MAX_CC_ENTRIES).optional(),
   subject: z.string().transform((s) => s.replace(/[\r\n]+/g, " ")),
   bodyHtml: z.string(),
   bodyText: z.string().optional(),
@@ -55,7 +105,19 @@ const sendEmailRoute = createRoute({
 
 sendRouter.openapi(sendEmailRoute, async (c) => {
   const db = c.get("db");
-  const { to, fromAddress, subject, bodyHtml, bodyText } = c.req.valid("json");
+  const raw = c.req.valid("json");
+  // Canonicalize inbox + recipient addresses to lowercase before
+  // any downstream use — keeps stored rows consistent with the
+  // (already-lowercased) conversation_id and prevents casing
+  // variants from forking group rows. CC emails get the same
+  // treatment so de-dup and roster diff work case-insensitively.
+  const fromAddress = raw.fromAddress.trim().toLowerCase();
+  const to = raw.to.trim().toLowerCase();
+  const cc = raw.cc?.map((c) => ({
+    email: c.email.trim().toLowerCase(),
+    name: c.name ?? null,
+  }));
+  const { subject, bodyHtml, bodyText } = raw;
   const allowed = c.get("allowedInboxes")!;
   assertInboxAllowed(allowed, fromAddress);
   const now = Math.floor(Date.now() / 1000);
@@ -66,6 +128,7 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
   const result = await sender.send({
     from: formattedFrom,
     to,
+    ...(cc && cc.length > 0 ? { cc: cc.map(formatCc) } : {}),
     subject,
     html: bodyHtml,
     text: bodyText,
@@ -108,6 +171,16 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
     personId = refetched[0]!.id;
   }
 
+  // Compute conversation_id from the external participant set on this
+  // outbound message. The "from" side is us (internal); we count the
+  // primary recipient and any external CC addresses.
+  const internalDomains = await fetchInternalDomains(db);
+  const externals = externalsOnly(
+    [to, ...(cc ?? []).map((c) => c.email)],
+    internalDomains,
+  );
+  const conversationId = await computeConversationId(fromAddress, externals);
+
   // Store sent email
   const id = nanoid();
   await db.insert(sentEmails).values({
@@ -121,6 +194,8 @@ sendRouter.openapi(sendEmailRoute, async (c) => {
     messageId,
     resendId: result.id,
     status: result.error ? "failed" : "sent",
+    cc: cc && cc.length > 0 ? JSON.stringify(cc) : null,
+    conversationId,
     sentAt: now,
     createdAt: now,
   });
@@ -153,6 +228,7 @@ const replyEmailRoute = createRoute({
             bodyHtml: z.string().optional(),
             bodyText: z.string().optional(),
             fromAddress: z.string().email(),
+            cc: z.array(CcEntrySchema).max(MAX_CC_ENTRIES).optional(),
             templateSlug: z.string().optional(),
             variables: z.record(z.string(), z.string()).optional(),
           }),
@@ -168,8 +244,16 @@ const replyEmailRoute = createRoute({
 sendRouter.openapi(replyEmailRoute, async (c) => {
   const db = c.get("db");
   const { emailId } = c.req.valid("param");
-  const { bodyHtml, bodyText, fromAddress, templateSlug, variables } =
-    c.req.valid("json");
+  const raw = c.req.valid("json");
+  // Same canonicalization story as the send route — lowercase the
+  // inbox + recipient + CC emails before downstream use so stored
+  // rows match the lowercased conversation_id.
+  const fromAddress = raw.fromAddress.trim().toLowerCase();
+  const cc = raw.cc?.map((c) => ({
+    email: c.email.trim().toLowerCase(),
+    name: c.name ?? null,
+  }));
+  const { bodyHtml, bodyText, templateSlug, variables } = raw;
   const allowed = c.get("allowedInboxes")!;
   assertInboxAllowed(allowed, fromAddress);
   const now = Math.floor(Date.now() / 1000);
@@ -199,7 +283,8 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
     origPersonId = orig.personId;
     origSubject = orig.subject ?? null;
     origInReplyToMessageId = orig.messageId ?? null;
-    toAddress = person[0].email;
+    // Canonicalize the recipient — older rows may be mixed-case.
+    toAddress = person[0].email.toLowerCase();
   } else {
     const sentRow = await db
       .select()
@@ -220,7 +305,7 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
     origPersonId = orig.personId;
     origSubject = orig.subject ?? null;
     origInReplyToMessageId = orig.messageId ?? null;
-    toAddress = orig.toAddress;
+    toAddress = orig.toAddress.toLowerCase();
   }
 
   // Determine subject and body
@@ -280,6 +365,7 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
   const result = await sender.send({
     from: formattedFrom,
     to: toAddress,
+    ...(cc && cc.length > 0 ? { cc: cc.map(formatCc) } : {}),
     subject: finalSubject,
     html: finalBodyHtml,
     text: bodyText,
@@ -290,6 +376,17 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
         : {}),
     },
   });
+
+  // Compute conversation_id for this reply.
+  const internalDomainsReply = await fetchInternalDomains(db);
+  const externalsReply = externalsOnly(
+    [toAddress, ...(cc ?? []).map((c) => c.email)],
+    internalDomainsReply,
+  );
+  const conversationIdReply = await computeConversationId(
+    fromAddress,
+    externalsReply,
+  );
 
   // Store sent email
   const id = nanoid();
@@ -305,6 +402,8 @@ sendRouter.openapi(replyEmailRoute, async (c) => {
     messageId,
     resendId: result.id,
     status: result.error ? "failed" : "sent",
+    cc: cc && cc.length > 0 ? JSON.stringify(cc) : null,
+    conversationId: conversationIdReply,
     sentAt: now,
     createdAt: now,
   });

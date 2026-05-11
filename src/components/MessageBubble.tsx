@@ -1,11 +1,22 @@
 import { useState } from "react";
 import { sanitizeEmailHtml } from "@/lib/sanitize-html";
 import { Maximize2, Paperclip, Trash2 } from "lucide-react";
+import CcChips from "@/components/CcChips";
 import type { Email } from "@/lib/api";
 
 interface MessageBubbleProps {
   email: Email;
   personEmail: string;
+  /** Domains we treat as "internal" (matches our sender_identities). */
+  internalDomains?: string[];
+  /**
+   * Per-bubble sender override — used when rendering a group conversation
+   * where each bubble has a different sender. Returning `null` falls back
+   * to the default ("You" for sent, `personEmail` for received).
+   */
+  senderResolver?: (
+    email: Email,
+  ) => { email: string; name: string | null } | null;
   onOpenHtml: (email: Email) => void;
   onMarkRead: (email: Email) => void;
   onReply: (emailId: string) => void;
@@ -21,6 +32,8 @@ const TRUNCATE_LENGTH = MAX_LINES * APPROX_CHARS_PER_LINE;
 export default function MessageBubble({
   email,
   personEmail,
+  internalDomains = [],
+  senderResolver,
   onOpenHtml,
   onMarkRead,
   onReply,
@@ -28,6 +41,7 @@ export default function MessageBubble({
   compact = false,
   renderHtml = false,
 }: MessageBubbleProps) {
+  const override = senderResolver?.(email) ?? null;
   const [expanded, setExpanded] = useState(false);
   const isSent = email.type === "sent";
   const isUnread = email.type === "received" && email.isRead === 0;
@@ -45,7 +59,13 @@ export default function MessageBubble({
     ? text.slice(0, truncateLength).trimEnd() + "..."
     : text;
 
-  const senderName = isSent ? "You" : personEmail;
+  const senderName = isSent
+    ? "You"
+    : override
+      ? override.name && override.name.trim()
+        ? override.name
+        : override.email
+      : personEmail;
 
   const toAddress = isSent
     ? email.toAddress || personEmail
@@ -111,6 +131,13 @@ export default function MessageBubble({
         >
           {email.subject}
         </p>
+      )}
+
+      {/* CC chips — internal contacts get a lime accent */}
+      {email.cc && email.cc.length > 0 && (
+        <div className="mb-1">
+          <CcChips cc={email.cc} internalDomains={internalDomains} />
+        </div>
       )}
 
       {/* Body */}

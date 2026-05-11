@@ -10,6 +10,7 @@ export interface Person {
 }
 
 export interface GroupedPerson {
+  type: "person";
   id: string;
   email: string;
   name: string | null;
@@ -19,6 +20,39 @@ export interface GroupedPerson {
   recipientCount: number;
   recipients: string[];
   hasAttachment: number;
+}
+
+/**
+ * A multi-participant conversation surfaced in the inbox list. Created when
+ * a thread has 2+ external participants. Internal teammates can be CC'd
+ * without changing the conversation identity — they show up under
+ * `ccParticipants`, not as standalone rows.
+ */
+export interface GroupedConversation {
+  type: "group";
+  id: string;
+  inbox: string;
+  participants: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+  }>;
+  ccParticipants: Array<{
+    email: string;
+    name: string | null;
+  }>;
+  lastEmailAt: number;
+  unreadCount: number;
+  totalCount: number;
+  hasAttachment: number;
+}
+
+/** Discriminated union — anything that shows up in the inbox sidebar/table. */
+export type GroupedItem = GroupedPerson | GroupedConversation;
+
+export interface CcEntry {
+  email: string;
+  name?: string | null;
 }
 
 export interface Email {
@@ -32,6 +66,7 @@ export interface Email {
   bodyHtml: string | null;
   bodyText: string | null;
   isRead: number | null;
+  cc: CcEntry[];
   timestamp: number;
   attachmentCount?: number;
   attachments?: Attachment[];
@@ -64,7 +99,11 @@ export interface Stats {
   totalEmails: number;
   unreadCount: number;
   recipients: string[];
-  senderIdentities: Array<{ email: string; displayName: string | null }>;
+  senderIdentities: Array<{
+    email: string;
+    displayName: string | null;
+    signatureHtml: string | null;
+  }>;
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -105,11 +144,41 @@ export async function fetchPerson(id: string): Promise<Person> {
   return apiFetch(`/api/people/${id}`);
 }
 
+export interface InboxAggregates {
+  /** Number of rows with at least one unread email in the filtered set. */
+  unreadRowCount: number;
+  /** Number of rows that have at least one downloadable attachment. */
+  attachmentRowCount: number;
+  /** Number of person rows that span 2+ inboxes (groups don't count). */
+  multiInboxRowCount: number;
+  /** Sum of unread email counts across the filtered set. */
+  totalUnreadEmails: number;
+}
+
 export interface PaginatedGroupedPeople {
-  data: GroupedPerson[];
+  /** Mixed list of person + group rows, sorted by the requested key. */
+  data: GroupedItem[];
+  /** Total rows in the filtered set (across all pages). */
   total: number;
   page: number;
   limit: number;
+  /** Aggregates over the *filtered* set so stat tiles don't lie when paged. */
+  aggregates: InboxAggregates;
+}
+
+export type InboxSort = "recency" | "unread" | "inbox" | "attachments";
+export type InboxSortDirection = "asc" | "desc";
+
+export interface InboxSortSpec {
+  key: InboxSort;
+  direction: InboxSortDirection;
+}
+
+/** The natural direction for each sort key. Recency/unread/attachments
+ *  default to desc (most recent / most unread / has-attachments-first);
+ *  inbox defaults to asc (alphabetical). */
+export function defaultDirectionFor(key: InboxSort): InboxSortDirection {
+  return key === "inbox" ? "asc" : "desc";
 }
 
 export async function fetchGroupedPeople(params?: {
@@ -117,6 +186,9 @@ export async function fetchGroupedPeople(params?: {
   recipient?: string;
   unread?: boolean;
   hasAttachment?: boolean;
+  sort?: InboxSort;
+  /** Optional explicit direction. Server applies the natural default if omitted. */
+  direction?: InboxSortDirection;
   page?: number;
   limit?: number;
 }): Promise<PaginatedGroupedPeople> {
@@ -125,9 +197,39 @@ export async function fetchGroupedPeople(params?: {
   if (params?.recipient) qs.set("recipient", params.recipient);
   if (params?.unread) qs.set("unread", "1");
   if (params?.hasAttachment) qs.set("hasAttachment", "1");
+  if (params?.sort && params.sort !== "recency") qs.set("sort", params.sort);
+  // Only send direction when it differs from the natural default —
+  // keeps the URL stable for the common case and avoids cache-busting.
+  if (
+    params?.sort &&
+    params?.direction &&
+    params.direction !== defaultDirectionFor(params.sort)
+  ) {
+    qs.set("direction", params.direction);
+  }
   if (params?.page) qs.set("page", params.page.toString());
   if (params?.limit) qs.set("limit", params.limit.toString());
   return apiFetch(`/api/people/grouped?${qs}`);
+}
+
+export interface ConversationDetail {
+  conversation: {
+    id: string;
+    inbox: string;
+    participants: Array<{
+      id: string;
+      email: string;
+      name: string | null;
+    }>;
+  };
+  emails: Email[];
+}
+
+/** Fetch the full chronological timeline for a group conversation. */
+export async function fetchConversationEmails(
+  conversationId: string,
+): Promise<ConversationDetail> {
+  return apiFetch(`/api/conversations/${conversationId}/emails`);
 }
 
 export async function fetchPersonEmails(
@@ -180,9 +282,21 @@ export async function markPeopleRead(
   });
 }
 
+/** Mark all unread emails in the given group conversations as read. */
+export async function markConversationsRead(
+  conversationIds: string[],
+): Promise<{ success: boolean; affected: number }> {
+  return apiFetch(`/api/conversations/mark-read`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationIds }),
+  });
+}
+
 export async function sendEmail(data: {
   to: string;
   fromAddress: string;
+  cc?: CcEntry[];
   subject: string;
   bodyHtml: string;
   bodyText?: string;
@@ -200,6 +314,7 @@ export async function replyToEmail(
     bodyHtml?: string;
     bodyText?: string;
     fromAddress: string;
+    cc?: CcEntry[];
     templateSlug?: string;
     variables?: Record<string, string>;
   },
@@ -514,6 +629,7 @@ export interface AdminInbox {
   email: string;
   displayName: string | null;
   displayMode: InboxDisplayMode;
+  signatureHtml: string | null;
   assignedUserIds: string[];
 }
 
@@ -535,11 +651,16 @@ export async function createInbox(data: {
 
 export async function updateInboxSettings(
   email: string,
-  patch: { displayName?: string | null; displayMode?: InboxDisplayMode },
+  patch: {
+    displayName?: string | null;
+    displayMode?: InboxDisplayMode;
+    signatureHtml?: string | null;
+  },
 ): Promise<{
   email: string;
   displayName: string | null;
   displayMode: InboxDisplayMode;
+  signatureHtml: string | null;
 }> {
   return apiFetch(`/api/admin/inboxes/${encodeURIComponent(email)}`, {
     method: "PATCH",

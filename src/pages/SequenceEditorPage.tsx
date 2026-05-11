@@ -1,5 +1,22 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Code2,
+  GripVertical,
+  ListOrdered,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import PageHeader, { PageContainer } from "@/components/PageHeader";
+import {
+  CodeBlock,
+  Field,
+  FORM_INPUT_CLASS,
+  SectionHeader,
+} from "@/components/PageForm";
 import {
   fetchSequence,
   fetchTemplates,
@@ -8,6 +25,30 @@ import {
   type SequenceStep,
   type EmailTemplate,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+/** Round delay-hours into a friendlier string for the summary line. */
+function formatDelay(hours: number): string {
+  if (hours <= 0) return "immediately";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round((hours / 24) * 10) / 10;
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
+/** Cumulative offset from the enrollment start, e.g. "day 3" for the
+ *  third step in a {0, 24h, 72h} sequence. */
+function formatCumulative(steps: SequenceStep[], idx: number): string {
+  const total = steps
+    .slice(0, idx + 1)
+    .reduce(
+      (acc, s) => acc + (Number.isFinite(s.delayHours) ? s.delayHours : 0),
+      0,
+    );
+  if (total === 0) return "Day 0 · sends right away";
+  if (total < 24) return `+${total}h after enrollment`;
+  const days = Math.round((total / 24) * 10) / 10;
+  return `Day ${days}`;
+}
 
 export default function SequenceEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -21,20 +62,30 @@ export default function SequenceEditorPage() {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const load = async () => {
-      const tmpls = await fetchTemplates();
-      setTemplates(tmpls);
-
-      if (id) {
-        const seq = await fetchSequence(id);
-        setName(seq.name);
-        setSteps(seq.steps);
+    let cancelled = false;
+    (async () => {
+      try {
+        const tmpls = await fetchTemplates();
+        if (cancelled) return;
+        setTemplates(tmpls);
+        if (id) {
+          const seq = await fetchSequence(id);
+          if (cancelled) return;
+          setName(seq.name);
+          setSteps(seq.steps);
+        }
+      } catch {
+        if (!cancelled) setError("Failed to load sequence.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
     };
-    load();
   }, [id]);
 
   function addStep() {
@@ -51,17 +102,21 @@ export default function SequenceEditorPage() {
     setSteps(steps.filter((s) => s.order !== order));
   }
 
-  function updateStep(order: number, field: keyof SequenceStep, value: any) {
+  function updateStep(
+    order: number,
+    field: keyof SequenceStep,
+    value: SequenceStep[keyof SequenceStep],
+  ) {
     setSteps(
       steps.map((s) => (s.order === order ? { ...s, [field]: value } : s)),
     );
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!name.trim() || steps.some((s) => !s.templateSlug)) return;
-
     setSaving(true);
+    setError("");
     try {
       if (isEditing && id) {
         await updateSequence(id, { name, steps });
@@ -69,232 +124,379 @@ export default function SequenceEditorPage() {
         await createSequence({ name, steps });
       }
       navigate("/sequences");
-    } catch (err) {
-      alert("Failed to save sequence.");
+    } catch {
+      setError("Failed to save sequence.");
     } finally {
       setSaving(false);
     }
   }
 
+  const totalSteps = steps.length;
+  const totalHours = steps.reduce(
+    (acc, s) => acc + (Number.isFinite(s.delayHours) ? s.delayHours : 0),
+    0,
+  );
+
   if (loading) {
     return (
-      <div className="flex-1 p-6">
-        <p className="text-text-secondary">Loading...</p>
-      </div>
+      <PageContainer>
+        <p className="pt-10 text-sm text-text-tertiary">Loading…</p>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <h1 className="mb-6 text-xl font-semibold text-text-primary">
-        {isEditing ? "Edit Sequence" : "New Sequence"}
-      </h1>
+    <PageContainer>
+      <Link
+        to="/sequences"
+        className="-mt-1 mb-1 inline-flex items-center gap-1 text-xs font-medium text-text-tertiary transition-colors hover:text-text-primary"
+      >
+        <ArrowLeft size={12} />
+        Sequences
+      </Link>
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-text-secondary">
-            Sequence Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Welcome Sequence"
-            className="w-full rounded-md border border-border bg-white ring-1 ring-gray-200 px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none"
-            required
-          />
+      <PageHeader
+        title={isEditing ? name || "Edit sequence" : "New sequence"}
+        subtitle={
+          isEditing
+            ? `${totalSteps} step${totalSteps === 1 ? "" : "s"} · spans ${formatDelay(totalHours)}`
+            : "Build a multi-step drip — saasmail schedules each email automatically."
+        }
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/sequences")}
+              className="rounded-[6px] border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSubmit()}
+              disabled={
+                saving || !name.trim() || steps.some((s) => !s.templateSlug)
+              }
+              className="rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving
+                ? "Saving…"
+                : isEditing
+                  ? "Save changes"
+                  : "Create sequence"}
+            </button>
+          </div>
+        }
+      />
+
+      {error && (
+        <div
+          role="alert"
+          className="mb-4 rounded-[8px] border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+        >
+          {error}
         </div>
+      )}
 
-        <div>
-          <label className="mb-2 block text-sm font-medium text-text-secondary">
-            Steps
-          </label>
-          <div className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* --- Details card --- */}
+        <section className="rounded-[8px] bg-card p-5 ring-1 ring-border">
+          <SectionHeader
+            icon={Sparkles}
+            title="Details"
+            subtitle="Give the sequence a clear name — it shows up in the enroll picker."
+          />
+
+          <div className="mt-4">
+            <Field label="Sequence name" hint="Visible to admins only.">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Welcome onboarding"
+                required
+                className={FORM_INPUT_CLASS}
+              />
+            </Field>
+          </div>
+        </section>
+
+        {/* --- Steps card --- */}
+        <section className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+            <SectionHeader
+              icon={ListOrdered}
+              title="Steps"
+              subtitle={
+                <>
+                  {totalSteps} step{totalSteps === 1 ? "" : "s"} · spans{" "}
+                  <span className="font-medium text-text-secondary">
+                    {formatDelay(totalHours)}
+                  </span>{" "}
+                  end-to-end. Delay is measured from the previous step.
+                </>
+              }
+            />
+          </div>
+
+          <ul
+            data-testid="sequence-steps"
+            className="divide-y divide-border/60"
+          >
             {steps.map((step, idx) => (
-              <div
+              <li
                 key={step.order}
                 data-testid="sequence-step-row"
                 data-step-index={idx}
-                className="flex items-center gap-3 rounded-lg border border-border bg-white ring-1 ring-gray-200 p-3"
+                className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center"
               >
-                <span className="text-xs font-medium text-text-tertiary">
-                  #{idx + 1}
-                </span>
-                <select
-                  value={step.templateSlug}
-                  onChange={(e) =>
-                    updateStep(step.order, "templateSlug", e.target.value)
-                  }
-                  className="flex-1 rounded-md border border-border bg-white ring-1 ring-gray-200 px-2 py-1.5 text-sm text-text-primary"
-                  required
-                >
-                  <option value="">Select template...</option>
-                  {templates.map((t) => (
-                    <option key={t.slug} value={t.slug}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min={0}
-                    value={step.delayHours}
-                    onChange={(e) =>
-                      updateStep(
-                        step.order,
-                        "delayHours",
-                        parseInt(e.target.value) || 0,
-                      )
-                    }
-                    className="w-20 rounded-md border border-border bg-white ring-1 ring-gray-200 px-2 py-1.5 text-sm text-text-primary"
+                <div className="flex shrink-0 items-center gap-2">
+                  <GripVertical
+                    size={14}
+                    className="text-text-tertiary/60"
+                    aria-hidden
                   />
-                  <span className="text-xs text-text-tertiary">hrs delay</span>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet/10 text-[11px] font-semibold tabular-nums">
+                    <span style={{ color: "#7c5cfc" }}>{idx + 1}</span>
+                  </span>
                 </div>
+
+                <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+                  <Field
+                    label="Template"
+                    hint={
+                      <span className="text-text-tertiary/80">
+                        {formatCumulative(steps, idx)}
+                      </span>
+                    }
+                    className="min-w-0"
+                  >
+                    <select
+                      value={step.templateSlug}
+                      onChange={(e) =>
+                        updateStep(step.order, "templateSlug", e.target.value)
+                      }
+                      required
+                      className={cn(FORM_INPUT_CLASS, "appearance-none pr-8")}
+                    >
+                      <option value="" disabled>
+                        Select a template…
+                      </option>
+                      {templates.map((t) => (
+                        <option key={t.slug} value={t.slug}>
+                          {t.name} · {t.slug}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field
+                    label="Delay"
+                    hint={
+                      idx === 0
+                        ? "Set 0 so step 1 fires on enrollment."
+                        : "Hours after the previous step."
+                    }
+                    className="sm:w-40"
+                  >
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={0}
+                        value={step.delayHours}
+                        onChange={(e) =>
+                          updateStep(
+                            step.order,
+                            "delayHours",
+                            parseInt(e.target.value, 10) || 0,
+                          )
+                        }
+                        className={cn(FORM_INPUT_CLASS, "pr-12 tabular-nums")}
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
+                        hrs
+                      </span>
+                    </div>
+                  </Field>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => removeStep(step.order)}
-                  className="text-xs text-red-400 hover:text-red-300"
                   disabled={steps.length <= 1}
+                  aria-label="Remove step"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 self-end rounded-[6px] px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 sm:self-auto"
                 >
+                  <Trash2 size={12} />
                   Remove
                 </button>
-              </div>
+              </li>
             ))}
+          </ul>
+
+          <div className="border-t border-border bg-bg-subtle/40 px-5 py-3">
+            <button
+              type="button"
+              onClick={addStep}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-dashed border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-text-primary/30 hover:bg-bg-muted hover:text-text-primary"
+            >
+              <Plus size={12} />
+              Add step
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={addStep}
-            className="mt-2 text-xs text-accent hover:underline"
-          >
-            + Add step
-          </button>
-        </div>
+        </section>
 
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-          >
-            {saving ? "Saving..." : isEditing ? "Update" : "Create"}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/sequences")}
-            className="rounded-md border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-muted"
-          >
-            Cancel
-          </button>
-        </div>
+        {/* --- API reference (only meaningful for existing sequences) --- */}
+        {isEditing && id && (
+          <ApiReferenceCard
+            sequenceId={id}
+            steps={steps}
+            templates={templates}
+          />
+        )}
       </form>
+    </PageContainer>
+  );
+}
 
-      {/* API usage example (only shown when editing an existing sequence) */}
-      {isEditing && id && (
-        <div className="mt-8 max-w-2xl">
-          <h2 className="mb-2 text-sm font-semibold text-text-primary">
-            Enroll via API
-          </h2>
-          <p className="mb-2 text-xs text-text-secondary">
-            Use this endpoint to programmatically enroll a person into this
-            sequence. Provide either{" "}
-            <code className="text-accent">personId</code> (existing person) or{" "}
-            <code className="text-accent">personEmail</code> (looks up or
-            creates the person automatically):
-          </p>
-          <pre className="overflow-x-auto rounded-lg border border-border bg-white ring-1 ring-gray-200 p-4 text-xs text-text-secondary">
-            {(() => {
-              const usedSlugs = steps
-                .map((s) => s.templateSlug)
-                .filter(Boolean);
-              const usedTemplates = templates.filter((t) =>
-                usedSlugs.includes(t.slug),
-              );
-              const varSet = new Set<string>();
-              const varRegex = /\{\{(\w+)\}\}/g;
-              for (const t of usedTemplates) {
-                for (const src of [t.subject, t.bodyHtml]) {
-                  let m: RegExpExecArray | null;
-                  while ((m = varRegex.exec(src)) !== null) {
-                    varSet.add(m[1]);
-                  }
-                }
-              }
-              const varsObj =
-                varSet.size > 0
-                  ? Object.fromEntries(
-                      Array.from(varSet).map((v) => [
-                        v,
-                        `<${v.toUpperCase()}>`,
-                      ]),
-                    )
-                  : undefined;
-              const body = JSON.stringify(
-                {
-                  personEmail: "<RECIPIENT_EMAIL>",
-                  fromAddress: "<YOUR_SENDING_ADDRESS>",
-                  ...(varsObj ? { variables: varsObj } : {}),
-                },
-                null,
-                2,
-              );
-              return `curl -X POST ${window.location.origin}/api/sequences/${id}/enroll \\
+/* ---------------------------- API reference card ---------------------------- */
+
+function ApiReferenceCard({
+  sequenceId,
+  steps,
+  templates,
+}: {
+  sequenceId: string;
+  steps: SequenceStep[];
+  templates: EmailTemplate[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  // Walk the templates referenced by the sequence's steps and gather
+  // every {{var}} they need. The enrollment endpoint validates that
+  // these are present in `variables` on the request body.
+  const { allVars, perTemplate } = useMemo(() => {
+    const usedSlugs = new Set(steps.map((s) => s.templateSlug).filter(Boolean));
+    const usedTemplates = templates.filter((t) => usedSlugs.has(t.slug));
+    const all = new Set<string>();
+    const per: { slug: string; name: string; vars: string[] }[] = [];
+    const re = /\{\{(\w+)\}\}/g;
+    for (const t of usedTemplates) {
+      const local = new Set<string>();
+      for (const src of [t.subject, t.bodyHtml]) {
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src)) !== null) {
+          local.add(m[1]);
+          all.add(m[1]);
+        }
+      }
+      if (local.size > 0) {
+        per.push({
+          slug: t.slug,
+          name: t.name,
+          vars: Array.from(local),
+        });
+      }
+    }
+    return { allVars: Array.from(all), perTemplate: per };
+  }, [steps, templates]);
+
+  const varsObj =
+    allVars.length > 0
+      ? Object.fromEntries(allVars.map((v) => [v, `<${v.toUpperCase()}>`]))
+      : undefined;
+
+  const endpoint = `${typeof window !== "undefined" ? window.location.origin : ""}/api/sequences/${sequenceId}/enroll`;
+
+  const body = JSON.stringify(
+    {
+      personEmail: "<RECIPIENT_EMAIL>",
+      fromAddress: "<YOUR_SENDING_ADDRESS>",
+      ...(varsObj ? { variables: varsObj } : {}),
+    },
+    null,
+    2,
+  );
+
+  const curl = `curl -X POST ${endpoint} \\
   -H "Authorization: Bearer <API_KEY>" \\
   -H "Content-Type: application/json" \\
   -d '${body}'`;
-            })()}
-          </pre>
-          {(() => {
-            const usedSlugs = steps.map((s) => s.templateSlug).filter(Boolean);
-            const usedTemplates = templates.filter((t) =>
-              usedSlugs.includes(t.slug),
-            );
-            const templateVars: {
-              slug: string;
-              name: string;
-              vars: string[];
-            }[] = [];
-            const varRegex = /\{\{(\w+)\}\}/g;
-            for (const t of usedTemplates) {
-              const vars = new Set<string>();
-              for (const src of [t.subject, t.bodyHtml]) {
-                let m: RegExpExecArray | null;
-                while ((m = varRegex.exec(src)) !== null) {
-                  vars.add(m[1]);
-                }
-              }
-              if (vars.size > 0) {
-                templateVars.push({
-                  slug: t.slug,
-                  name: t.name,
-                  vars: Array.from(vars),
-                });
-              }
-            }
-            if (templateVars.length === 0) return null;
-            return (
-              <div className="mt-3">
-                <p className="mb-1 text-xs font-medium text-text-secondary">
-                  Template variables
-                </p>
-                <ul className="space-y-1 text-xs text-text-tertiary">
-                  {templateVars.map((tv) => (
-                    <li key={tv.slug}>
-                      <span className="text-text-secondary">{tv.name}</span>
-                      {" — "}
-                      {tv.vars.map((v) => (
-                        <code key={v} className="mr-1 text-accent">
-                          {`{{${v}}}`}
-                        </code>
-                      ))}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })()}
+
+  return (
+    <section className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-3 px-5 py-4 text-left transition-colors hover:bg-bg-muted/30"
+      >
+        <div className="min-w-0">
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-text-primary">
+            <Code2 size={13} className="text-text-tertiary" />
+            Enroll via API
+          </h2>
+          <p className="mt-0.5 text-xs font-light text-text-secondary">
+            Programmatically enroll a contact — pass{" "}
+            <code className="rounded bg-bg-muted px-1 py-0.5 font-mono text-[10px]">
+              personEmail
+            </code>{" "}
+            (looked up or created) or{" "}
+            <code className="rounded bg-bg-muted px-1 py-0.5 font-mono text-[10px]">
+              personId
+            </code>{" "}
+            (existing).
+          </p>
+        </div>
+        <ChevronDown
+          size={16}
+          className={cn(
+            "shrink-0 text-text-tertiary transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {open && (
+        <div className="space-y-5 border-t border-border px-5 py-5">
+          <Field label="Endpoint">
+            <CodeBlock value={`POST ${endpoint}`} oneLine />
+          </Field>
+
+          {perTemplate.length > 0 && (
+            <Field
+              label="Template variables"
+              hint="All variables must be supplied in `variables` or the API returns 400."
+            >
+              <ul className="space-y-1.5 text-xs">
+                {perTemplate.map((tv) => (
+                  <li
+                    key={tv.slug}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <span className="font-medium text-text-primary">
+                      {tv.name}
+                    </span>
+                    <span className="text-text-tertiary">·</span>
+                    {tv.vars.map((v) => (
+                      <code
+                        key={v}
+                        className="rounded-full bg-violet/10 px-2 py-0.5 text-[11px] font-mono"
+                        style={{ color: "#7c5cfc" }}
+                      >
+                        {`{{${v}}}`}
+                      </code>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </Field>
+          )}
+
+          <Field label="Example request">
+            <CodeBlock value={curl} />
+          </Field>
         </div>
       )}
-    </div>
+    </section>
   );
 }

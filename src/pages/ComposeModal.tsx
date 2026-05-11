@@ -1,13 +1,40 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X, Send, AtSign, PenSquare, Type } from "lucide-react";
+import { PenSquare, Send, X } from "lucide-react";
 import TiptapEditor from "@/components/TiptapEditor";
-import { sendEmail, fetchStats } from "@/lib/api";
+import CcInput from "@/components/CcInput";
+import {
+  TrayMaximizeButton,
+  TrayMetaRow,
+  trayContentClass,
+} from "@/components/Tray";
+import { sendEmail, fetchStats, type CcEntry } from "@/lib/api";
+import { dispatchEmailSent } from "@/lib/email-events";
 import { getFromLabel } from "@/lib/format";
+import { sanitizeEmailHtml } from "@/lib/sanitize-html";
+
+/**
+ * Optional seed values applied when the compose drawer opens. Used by
+ * the chat-mode "open in compose" handoff so a user can switch from
+ * the bottom-of-thread quick reply to the full editor without losing
+ * context (sender, recipient, CC roster, subject).
+ *
+ * Any field omitted falls back to the drawer's regular default —
+ * `from` defaults to the user's first inbox; `to`/`cc`/`subject`/`bodyHtml`
+ * default to empty.
+ */
+export interface ComposePrefill {
+  from?: string;
+  to?: string;
+  cc?: CcEntry[];
+  subject?: string;
+  bodyHtml?: string;
+}
 
 interface ComposeModalProps {
   open: boolean;
   onClose: () => void;
+  prefill?: ComposePrefill | null;
 }
 
 /**
@@ -15,44 +42,122 @@ interface ComposeModalProps {
  * Single "Freeform" mode for now (no template support); structurally
  * mirrors the reply experience so the two feel like the same component.
  */
-export default function ComposeModal({ open, onClose }: ComposeModalProps) {
+export default function ComposeModal({
+  open,
+  onClose,
+  prefill,
+}: ComposeModalProps) {
   const [to, setTo] = useState("");
   const [fromAddress, setFromAddress] = useState("");
+  const [cc, setCc] = useState<CcEntry[]>([]);
   const [recipients, setRecipients] = useState<string[]>([]);
   const [senderIdentities, setSenderIdentities] = useState<
-    Array<{ email: string; displayName: string | null }>
+    Array<{
+      email: string;
+      displayName: string | null;
+      signatureHtml: string | null;
+    }>
   >([]);
   const [subject, setSubject] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  // Tracked separately from the body so swapping `From` mid-compose can swap
+  // the signature without stomping on what the user has typed.
+  const [signatureHtml, setSignatureHtml] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  // Compact tray vs. full-viewport. Toggled by the maximize button in
+  // the header; reset every time the drawer reopens.
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // Domains we own — used for the lime/neutral CC chip color.
+  const internalDomains = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of senderIdentities) {
+      const at = s.email.lastIndexOf("@");
+      if (at >= 0) set.add(s.email.slice(at + 1).toLowerCase());
+    }
+    return Array.from(set);
+  }, [senderIdentities]);
 
   // TipTap emits "<p></p>" for an empty editor — treat that as empty.
   const bodyIsEmpty = !bodyHtml || bodyHtml === "<p></p>";
+
+  // Sanitize the signature once per change, then reuse for both the
+  // preview pane and the outbound concatenation. The server also
+  // sanitizes on write — this is defense-in-depth for browser
+  // execution paths (preview pane uses dangerouslySetInnerHTML).
+  const safeSignatureHtml = useMemo(
+    () => (signatureHtml ? sanitizeEmailHtml(signatureHtml) : null),
+    [signatureHtml],
+  );
 
   useEffect(() => {
     if (open) {
       fetchStats().then((stats) => {
         setRecipients(stats.recipients);
         setSenderIdentities(stats.senderIdentities ?? []);
-        if (!fromAddress && stats.recipients.length > 0) {
+        // Prefill `from` wins; otherwise keep whatever was sticky from
+        // last open; finally fall back to the first inbox.
+        const want = prefill?.from;
+        if (want && stats.recipients.includes(want)) {
+          setFromAddress(want);
+        } else if (!fromAddress && stats.recipients.length > 0) {
           setFromAddress(stats.recipients[0]);
         }
       });
+      // Apply any seeded values up front. Fields the caller didn't
+      // specify stay empty — same as a fresh "Compose" click.
+      setTo(prefill?.to ?? "");
+      setCc(prefill?.cc ?? []);
+      setSubject(prefill?.subject ?? "");
+      setBodyHtml(prefill?.bodyHtml ?? "");
     } else {
       setTo("");
+      setCc([]);
       setSubject("");
       setBodyHtml("");
+      setSignatureHtml(null);
       setError("");
+      setFullscreen(false);
     }
-  }, [open]);
+    // We intentionally don't track `fromAddress` here — it's only used
+    // as a sticky fallback above, not as a trigger to re-run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, prefill]);
+
+  // Whenever the From inbox or the loaded identity list changes, swap the
+  // signature trail to match. Stays a separate state slot so the user's
+  // typed body never gets clobbered.
+  useEffect(() => {
+    if (!fromAddress) {
+      setSignatureHtml(null);
+      return;
+    }
+    const match = senderIdentities.find((s) => s.email === fromAddress);
+    setSignatureHtml(match?.signatureHtml ?? null);
+  }, [fromAddress, senderIdentities]);
 
   async function handleSend() {
     if (!to || bodyIsEmpty) return;
     setSending(true);
     setError("");
     try {
-      await sendEmail({ to, fromAddress, subject, bodyHtml });
+      // Concatenate the typed body + auto-attached signature on send.
+      // The signature is wrapped in `data-signature` so the chat-feed
+      // toggle can strip it back out cleanly.
+      // Use the sanitized signature — even the outbound payload that
+      // never touches the browser DOM gets the cleaned version.
+      const finalBody = safeSignatureHtml
+        ? `${bodyHtml}<div data-signature>${safeSignatureHtml}</div>`
+        : bodyHtml;
+      await sendEmail({
+        to,
+        fromAddress,
+        ...(cc.length > 0 ? { cc } : {}),
+        subject,
+        bodyHtml: finalBody,
+      });
+      dispatchEmailSent({ fromAddress, to, origin: "compose" });
       onClose();
     } catch {
       setError("Failed to send email");
@@ -71,56 +176,62 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
   if (!open) return null;
 
   return (
-    <DialogPrimitive.Root open onOpenChange={(v) => !v && onClose()}>
+    // Non-modal tray (Gmail-style): the inbox stays clickable behind the
+    // compose window, only the close button or Esc dismisses, and the
+    // tray is anchored to the bottom-right.
+    <DialogPrimitive.Root
+      open
+      modal={false}
+      onOpenChange={(v) => !v && onClose()}
+    >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="drawer-overlay fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px]" />
+        <DialogPrimitive.Overlay className="tray-overlay fixed inset-0 z-50" />
         <DialogPrimitive.Content
           onKeyDown={handleKeyDown}
-          className="drawer-content fixed right-0 top-0 z-50 flex h-full w-full flex-col bg-card shadow-2xl ring-1 ring-border focus:outline-none sm:max-w-[920px]"
+          onInteractOutside={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          className={trayContentClass({ fullscreen, width: "compose" })}
         >
-          {/* Header */}
-          <div className="shrink-0 border-b border-border bg-card px-6 pb-4 pt-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-start gap-3">
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-                  style={{
-                    backgroundColor: "rgba(124, 92, 252, 0.12)",
-                    color: "#5b3ce6",
-                  }}
-                >
-                  <PenSquare size={18} />
-                </span>
-                <div className="min-w-0">
-                  <DialogPrimitive.Title className="text-lg font-extrabold tracking-tight text-text-primary">
-                    Compose
-                  </DialogPrimitive.Title>
-                  <p className="mt-0.5 truncate text-sm font-light text-text-tertiary">
-                    Send a new email from one of your inboxes
-                  </p>
-                </div>
-              </div>
+          {/* Slim single-row header — title + max/close. */}
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 pl-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <PenSquare
+                size={13}
+                className="shrink-0"
+                style={{ color: "#7c5cfc" }}
+                aria-hidden
+              />
+              <DialogPrimitive.Title className="truncate text-sm font-semibold text-text-primary">
+                {to ? `New message · ${to}` : "New message"}
+              </DialogPrimitive.Title>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <TrayMaximizeButton
+                fullscreen={fullscreen}
+                onToggle={() => setFullscreen((v) => !v)}
+              />
               <DialogPrimitive.Close
-                className="shrink-0 rounded-[8px] p-1.5 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
                 aria-label="Close"
               >
-                <X size={18} />
+                <X size={14} />
               </DialogPrimitive.Close>
             </div>
           </div>
 
-          {/* Metadata: From / To / Subject */}
-          <div className="shrink-0 space-y-1 border-b border-border bg-bg-subtle/40 px-6 py-3">
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-                <AtSign size={11} />
-                From
-              </span>
+          {/* Compact metadata: From / To / Cc / Subject. Each field is
+              a single inline row with no grid label column — keeps the
+              chrome closer to ~150px so the body has more room. */}
+          <div
+            className="shrink-0 divide-y divide-border/60 border-b border-border bg-bg-subtle/30"
+            data-testid="compose-metadata"
+          >
+            <TrayMetaRow label="From">
               <select
                 value={fromAddress}
                 onChange={(e) => setFromAddress(e.target.value)}
                 required
-                className="rounded-[6px] border border-border bg-card px-2 py-1.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-text-primary/15"
+                className="w-full bg-transparent py-2 pr-3 text-sm text-text-primary outline-none"
               >
                 {recipients.map((r) => (
                   <option key={r} value={r}>
@@ -128,15 +239,8 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <label
-                htmlFor="compose-to"
-                className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary"
-              >
-                <Send size={11} />
-                To
-              </label>
+            </TrayMetaRow>
+            <TrayMetaRow label="To" htmlFor="compose-to">
               <input
                 id="compose-to"
                 type="email"
@@ -145,17 +249,18 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
                 required
                 placeholder="recipient@example.com"
                 aria-label="To"
-                className="rounded-[6px] border border-border bg-card px-2 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:ring-2 focus:ring-text-primary/15"
+                className="w-full bg-transparent py-2 pr-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary"
               />
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-center gap-3 py-1">
-              <label
-                htmlFor="compose-subject"
-                className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary"
-              >
-                <Type size={11} />
-                Subject
-              </label>
+            </TrayMetaRow>
+            <TrayMetaRow label="Cc">
+              <CcInput
+                value={cc}
+                onChange={setCc}
+                internalDomains={internalDomains}
+                testId="compose-cc-input"
+              />
+            </TrayMetaRow>
+            <TrayMetaRow label="Subject" htmlFor="compose-subject">
               <input
                 id="compose-subject"
                 value={subject}
@@ -163,57 +268,68 @@ export default function ComposeModal({ open, onClose }: ComposeModalProps) {
                 required
                 placeholder="What's it about?"
                 aria-label="Subject"
-                className="rounded-[6px] border border-border bg-card px-2 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary focus:ring-2 focus:ring-text-primary/15"
+                className="w-full bg-transparent py-2 pr-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary"
               />
-            </div>
+            </TrayMetaRow>
           </div>
 
-          {/* Body */}
+          {/* Body — no min-height, just flex-1 so the editor fills the
+              tray. The smooth-scroll wrapper keeps long drafts scrollable. */}
           <div
-            className="smooth-scroll min-h-0 flex-1 overflow-y-auto bg-card"
+            className="smooth-scroll flex min-h-0 flex-1 flex-col overflow-y-auto bg-card px-4 py-3 sm:px-5"
             data-testid="compose-body"
           >
-            <div className="flex h-full min-h-[320px] flex-col p-6">
-              <TiptapEditor content={bodyHtml} onUpdate={setBodyHtml} />
-            </div>
+            <TiptapEditor content={bodyHtml} onUpdate={setBodyHtml} />
+            {safeSignatureHtml && (
+              <div
+                data-signature
+                data-testid="compose-signature-preview"
+                className="mt-4 border-t border-border/60 pt-3 opacity-70"
+                // Read-only signature preview. Auto-attached at send time;
+                // edited via the admin Inboxes page rather than inline.
+                // Pre-sanitized via sanitizeEmailHtml — see safeSignatureHtml.
+                dangerouslySetInnerHTML={{ __html: safeSignatureHtml }}
+              />
+            )}
           </div>
 
-          {/* Footer */}
-          <div className="shrink-0 border-t border-border bg-card px-6 py-3">
-            {error && (
-              <p className="mb-2 text-xs text-destructive" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <p className="hidden text-[11px] font-light text-text-tertiary sm:block">
-                <kbd className="rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
-                  ⌘
-                </kbd>
-                <kbd className="ml-1 rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
-                  Enter
-                </kbd>
-                <span className="ml-1.5">to send</span>
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-[6px] border border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  data-testid="compose-send-button"
-                  onClick={handleSend}
-                  disabled={sending || bodyIsEmpty || !to}
-                  className="inline-flex items-center gap-1.5 rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Send size={12} />
-                  {sending ? "Sending…" : "Send"}
-                </button>
-              </div>
+          {/* Slim footer — single row, just send + cancel + hint. */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 py-2.5 sm:px-5">
+            <div className="min-w-0 truncate text-[11px] font-light text-text-tertiary">
+              {error ? (
+                <span className="text-destructive" role="alert">
+                  {error}
+                </span>
+              ) : (
+                <span className="hidden sm:inline">
+                  <kbd className="rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
+                    ⌘
+                  </kbd>
+                  <kbd className="ml-1 rounded border border-border bg-bg-muted px-1 font-mono text-[10px]">
+                    Enter
+                  </kbd>{" "}
+                  to send
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-[6px] border border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                data-testid="compose-send-button"
+                onClick={handleSend}
+                disabled={sending || bodyIsEmpty || !to}
+                className="inline-flex items-center gap-1.5 rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={12} />
+                {sending ? "Sending…" : "Send"}
+              </button>
             </div>
           </div>
         </DialogPrimitive.Content>

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   Inbox,
   X,
@@ -7,8 +9,14 @@ import {
   LayoutList,
   LayoutGrid,
   PenSquare,
+  ArrowUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  defaultDirectionFor,
+  type InboxSort,
+  type InboxSortSpec,
+} from "@/lib/api";
 
 export interface InboxFilters {
   recipient?: string;
@@ -31,8 +39,24 @@ interface InboxToolbarProps {
   onSearchChange: (q: string) => void;
   view: InboxView;
   onViewChange: (v: InboxView) => void;
+  /** Active sort key + direction. The dropdown picks the key; clicking
+   *  the active key flips direction. There's also an explicit asc/desc
+   *  toggle button next to the dropdown for discoverability. */
+  sortSpec: InboxSortSpec;
+  onSortChange: (spec: InboxSortSpec) => void;
   /** Optional Compose button. Rendered to the right of the view toggle. */
   onCompose?: () => void;
+}
+
+const SORT_OPTIONS: Array<{ value: InboxSort; label: string }> = [
+  { value: "recency", label: "Most recent" },
+  { value: "unread", label: "Unread first" },
+  { value: "inbox", label: "By inbox" },
+  { value: "attachments", label: "Has attachments" },
+];
+
+function sortLabel(s: InboxSort): string {
+  return SORT_OPTIONS.find((o) => o.value === s)?.label ?? "Most recent";
 }
 
 function inboxOptionLabel(o: InboxOption) {
@@ -47,10 +71,14 @@ export default function InboxToolbar({
   onSearchChange,
   view,
   onViewChange,
+  sortSpec,
+  onSortChange,
   onCompose,
 }: InboxToolbarProps) {
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const sortWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!inboxOpen) return;
@@ -60,6 +88,15 @@ export default function InboxToolbar({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [inboxOpen]);
+
+  useEffect(() => {
+    if (!sortOpen) return;
+    function close(e: MouseEvent) {
+      if (!sortWrapRef.current?.contains(e.target as Node)) setSortOpen(false);
+    }
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [sortOpen]);
 
   const activeInbox = inboxes.find((i) => i.email === filters.recipient);
   const activeLabel = activeInbox
@@ -202,9 +239,96 @@ export default function InboxToolbar({
         </button>
       )}
 
+      <span className="ml-auto" />
+
+      {/* Sort dropdown — applies to both list + table views. The
+          dropdown picks the *key*; the icon button next to it flips
+          the direction. Clicking the active key in the dropdown also
+          flips direction so users have two paths. */}
+      <div
+        ref={sortWrapRef}
+        className="relative hidden sm:flex sm:items-center sm:gap-0.5"
+      >
+        <button
+          type="button"
+          onClick={() => setSortOpen((v) => !v)}
+          className="inline-flex h-7 items-center gap-1 rounded-[5px] px-2 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+          aria-label="Sort"
+        >
+          <ArrowUpDown size={11} />
+          <span className="hidden md:inline">{sortLabel(sortSpec.key)}</span>
+          <ChevronDown size={11} className="opacity-60" />
+        </button>
+        {/* Explicit direction toggle — visible always so the current
+            direction is obvious without opening the dropdown. */}
+        <button
+          type="button"
+          onClick={() =>
+            onSortChange({
+              key: sortSpec.key,
+              direction: sortSpec.direction === "asc" ? "desc" : "asc",
+            })
+          }
+          aria-label={
+            sortSpec.direction === "asc" ? "Sort descending" : "Sort ascending"
+          }
+          title={`Currently ${sortSpec.direction === "asc" ? "ascending" : "descending"}. Click to flip.`}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-[5px] text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+        >
+          {sortSpec.direction === "asc" ? (
+            <ArrowUp size={11} />
+          ) : (
+            <ArrowDown size={11} />
+          )}
+        </button>
+        {sortOpen && (
+          <div className="absolute right-0 top-full z-30 mt-1.5 w-48 overflow-hidden rounded-[8px] border border-border bg-card py-1 shadow-lg">
+            {SORT_OPTIONS.map((opt) => {
+              const isActive = sortSpec.key === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    if (isActive) {
+                      onSortChange({
+                        key: opt.value,
+                        direction:
+                          sortSpec.direction === "asc" ? "desc" : "asc",
+                      });
+                    } else {
+                      onSortChange({
+                        key: opt.value,
+                        direction: defaultDirectionFor(opt.value),
+                      });
+                    }
+                    setSortOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 px-3 py-2 text-xs transition-colors hover:bg-bg-muted",
+                    isActive && "bg-bg-subtle font-medium",
+                  )}
+                >
+                  <span>{opt.label}</span>
+                  {isActive && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-text-tertiary">
+                      {sortSpec.direction === "asc" ? (
+                        <ArrowUp size={10} />
+                      ) : (
+                        <ArrowDown size={10} />
+                      )}
+                      {sortSpec.direction === "asc" ? "asc" : "desc"}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* View toggle — pinned to the right edge. Hidden on mobile (the
           table view is unusable at narrow widths). */}
-      <span className="ml-auto" />
       <span className="mx-0.5 hidden h-4 w-px bg-border sm:block" aria-hidden />
       <div className="hidden h-7 rounded-[5px] bg-bg-muted/70 p-0.5 sm:inline-flex">
         <ViewToggleButton

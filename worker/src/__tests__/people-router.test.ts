@@ -159,4 +159,118 @@ describe("people router", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe("GET /api/people/grouped — sort direction + aggregates", () => {
+    it("returns aggregates over the filtered set, not just the page", async () => {
+      // Three people: two unread, one with attachments. Aggregates
+      // should reflect the whole set even when limit=1.
+      await createTestPerson({
+        id: "s1",
+        email: "alice@test.com",
+        name: "Alice",
+      });
+      await createTestPerson({ id: "s2", email: "bob@test.com", name: "Bob" });
+      await createTestPerson({
+        id: "s3",
+        email: "carol@test.com",
+        name: "Carol",
+      });
+      await createTestEmail({ id: "e1", personId: "s1", isRead: 0 });
+      await createTestEmail({
+        id: "e2",
+        personId: "s2",
+        isRead: 0,
+        messageId: "msg-2@example.com",
+      });
+      await createTestEmail({
+        id: "e3",
+        personId: "s3",
+        isRead: 1,
+        messageId: "msg-3@example.com",
+      });
+
+      const res = await authFetch("/api/people/grouped?limit=1", { apiKey });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data).toHaveLength(1);
+      expect(body.total).toBe(3);
+      expect(body.aggregates.unreadRowCount).toBe(2); // s1 + s2
+      expect(body.aggregates.totalUnreadEmails).toBe(2); // one each
+      expect(body.aggregates.attachmentRowCount).toBe(0);
+      expect(body.aggregates.multiInboxRowCount).toBe(0);
+    });
+
+    it("sorts inbox ascending by default (the natural direction)", async () => {
+      await createTestPerson({ id: "s1", email: "a@test.com" });
+      await createTestPerson({ id: "s2", email: "b@test.com" });
+      await createTestEmail({
+        id: "e1",
+        personId: "s1",
+        recipient: "support@saasmail.test",
+      });
+      await createTestEmail({
+        id: "e2",
+        personId: "s2",
+        recipient: "alpha@saasmail.test",
+        messageId: "msg-2@example.com",
+      });
+
+      const res = await authFetch("/api/people/grouped?sort=inbox", {
+        apiKey,
+      });
+      const body = await res.json();
+      expect(body.data[0].recipients?.[0]).toBe("alpha@saasmail.test");
+      expect(body.data[1].recipients?.[0]).toBe("support@saasmail.test");
+    });
+
+    it("flips the sort order when direction=desc on inbox sort", async () => {
+      await createTestPerson({ id: "s1", email: "a@test.com" });
+      await createTestPerson({ id: "s2", email: "b@test.com" });
+      await createTestEmail({
+        id: "e1",
+        personId: "s1",
+        recipient: "support@saasmail.test",
+      });
+      await createTestEmail({
+        id: "e2",
+        personId: "s2",
+        recipient: "alpha@saasmail.test",
+        messageId: "msg-2@example.com",
+      });
+
+      const res = await authFetch(
+        "/api/people/grouped?sort=inbox&direction=desc",
+        { apiKey },
+      );
+      const body = await res.json();
+      expect(body.data[0].recipients?.[0]).toBe("support@saasmail.test");
+      expect(body.data[1].recipients?.[0]).toBe("alpha@saasmail.test");
+    });
+
+    it("flips recency to ascending (oldest first) when direction=asc", async () => {
+      // Two persons, second one has the more recent email by default
+      // (timestamps assigned at insert time).
+      await createTestPerson({ id: "s1", email: "a@test.com" });
+      await createTestPerson({ id: "s2", email: "b@test.com" });
+      await createTestEmail({ id: "e1", personId: "s1" });
+      // Force e2 to be "newer" by waiting a tick — createTestEmail uses
+      // floor(Date.now()/1000) so close-together calls can collide.
+      await new Promise((r) => setTimeout(r, 1100));
+      await createTestEmail({
+        id: "e2",
+        personId: "s2",
+        messageId: "msg-2@example.com",
+      });
+
+      const desc = await authFetch("/api/people/grouped", { apiKey }).then(
+        (r) => r.json(),
+      );
+      expect(desc.data[0].id).toBe("s2");
+
+      const asc = await authFetch("/api/people/grouped?direction=asc", {
+        apiKey,
+      }).then((r) => r.json());
+      expect(asc.data[0].id).toBe("s1");
+    });
+  });
 });

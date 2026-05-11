@@ -8,6 +8,7 @@ import {
 } from "./helpers";
 import { users, passkeys } from "../db/auth.schema";
 import { invitations } from "../db/invitations.schema";
+import { appSettings } from "../db/app-settings.schema";
 import { eq } from "drizzle-orm";
 
 describe("admin router", () => {
@@ -187,6 +188,79 @@ describe("admin router", () => {
 
       const res = await authFetch("/api/admin/users", {
         apiKey: memberApiKey,
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe("PATCH /api/admin/settings", () => {
+    it("updates the brand name and persists it", async () => {
+      const res = await authFetch("/api/admin/settings", {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ brandName: "  Acme Mail  " }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      // Whitespace is trimmed before storing.
+      expect(data.brandName).toBe("Acme Mail");
+
+      const db = getDb();
+      const row = await db
+        .select()
+        .from(appSettings)
+        .where(eq(appSettings.key, "brand_name"))
+        .get();
+      expect(row?.value).toBe("Acme Mail");
+      expect(row?.updatedBy).toBe(userId);
+    });
+
+    it("resets the brand name when null is sent", async () => {
+      // Seed an existing custom value first.
+      await authFetch("/api/admin/settings", {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ brandName: "Acme Mail" }),
+      });
+
+      const res = await authFetch("/api/admin/settings", {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ brandName: null }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.brandName).toBe("saasmail");
+    });
+
+    it("rejects brand names that are too long", async () => {
+      const res = await authFetch("/api/admin/settings", {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ brandName: "x".repeat(41) }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects empty / whitespace-only brand names", async () => {
+      const res = await authFetch("/api/admin/settings", {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ brandName: "   " }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects non-admin users", async () => {
+      await cleanDb();
+      const { apiKey: memberApiKey } = await createTestUser({
+        role: "member",
+      });
+
+      const res = await authFetch("/api/admin/settings", {
+        apiKey: memberApiKey,
+        method: "PATCH",
+        body: JSON.stringify({ brandName: "Acme Mail" }),
       });
       expect(res.status).toBe(403);
     });

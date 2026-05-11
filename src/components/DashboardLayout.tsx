@@ -1,15 +1,31 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 import TopNav from "@/components/TopNav";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import Footer from "@/components/Footer";
 import ComposeFab from "@/components/ComposeFab";
-import ComposeModal from "@/pages/ComposeModal";
+import ComposeModal, { type ComposePrefill } from "@/pages/ComposeModal";
+import Toaster from "@/components/Toaster";
 import { useReducedAnimations } from "@/hooks/useReducedAnimations";
 
 export default function DashboardLayout() {
   const [composeOpen, setComposeOpen] = useState(false);
+  // Optional seed values for the compose drawer — populated when the user
+  // opts into the "full compose" flow from inside a chat thread.
+  const [composePrefill, setComposePrefill] = useState<ComposePrefill | null>(
+    null,
+  );
   const reduced = useReducedAnimations();
+
+  const openCompose = useCallback((prefill?: ComposePrefill) => {
+    setComposePrefill(prefill ?? null);
+    setComposeOpen(true);
+  }, []);
+
+  const closeCompose = useCallback(() => {
+    setComposeOpen(false);
+    setComposePrefill(null);
+  }, []);
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background pt-16">
@@ -30,16 +46,22 @@ export default function DashboardLayout() {
       <Breadcrumbs />
 
       <main className="relative z-10 flex min-h-0 flex-1 flex-col">
-        <Outlet context={{ onCompose: () => setComposeOpen(true) }} />
+        <Outlet context={{ onCompose: openCompose }} />
       </main>
 
       <div className="relative z-10">
         <Footer />
       </div>
 
-      <ComposeFab onClick={() => setComposeOpen(true)} />
+      <ComposeFab onClick={() => openCompose()} />
 
-      <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} />
+      <ComposeModal
+        open={composeOpen}
+        onClose={closeCompose}
+        prefill={composePrefill}
+      />
+
+      <Toaster />
     </div>
   );
 }

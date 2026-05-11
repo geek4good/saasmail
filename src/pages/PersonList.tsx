@@ -9,23 +9,40 @@ import {
   CheckCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deletePerson, type GroupedPerson } from "@/lib/api";
+import {
+  deletePerson,
+  type GroupedItem,
+  type GroupedPerson,
+  type GroupedConversation,
+} from "@/lib/api";
+import GroupRow from "@/components/GroupRow";
 
 interface PersonListProps {
-  people: GroupedPerson[];
-  setPeople: (people: GroupedPerson[]) => void;
+  /** Mixed list of person + group rows from /api/people/grouped. */
+  items: GroupedItem[];
+  /** Replaces the items list (used for optimistic delete). */
+  setItems: (items: GroupedItem[]) => void;
   loading: boolean;
   total: number;
   pageSize: number;
   page: number;
   onPageChange: (page: number) => void;
   selectedPersonId: string | null;
+  selectedConversationId: string | null;
   onSelectPerson: (person: GroupedPerson) => void;
+  onSelectConversation: (conv: GroupedConversation) => void;
   onPersonDeleted?: (personId: string) => void;
   isAdmin?: boolean;
   selectedIds?: Set<string>;
   onToggleSelected?: (id: string) => void;
   onMarkPersonRead?: (id: string) => void;
+  onMarkConversationRead?: (id: string) => void;
+  /**
+   * When true, person rows collapse to just the avatar + unread badge
+   * — the same shape group rows use in compact mode. Driven by the
+   * resizable sidebar dropping below COMPACT_THRESHOLD.
+   */
+  compact?: boolean;
 }
 
 // Deterministic pastel-on-violet palette per person initial.
@@ -75,20 +92,24 @@ function initials(name: string | null, email: string) {
 }
 
 export default function PersonList({
-  people,
-  setPeople,
+  items,
+  setItems,
   loading,
   total,
   pageSize,
   page,
   onPageChange,
   selectedPersonId,
+  selectedConversationId,
   onSelectPerson,
+  onSelectConversation,
   onPersonDeleted,
   isAdmin,
   selectedIds,
   onToggleSelected,
   onMarkPersonRead,
+  onMarkConversationRead,
+  compact = false,
 }: PersonListProps) {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(
@@ -122,9 +143,17 @@ export default function PersonList({
     )
       return;
     await deletePerson(person.id);
-    setPeople(people.filter((p) => p.id !== person.id));
+    setItems(
+      items.filter((it) => !(it.type === "person" && it.id === person.id)),
+    );
     onPersonDeleted?.(person.id);
   }
+
+  // Quick predicates for the union mapping below.
+  const persons = items.filter(
+    (it): it is GroupedPerson => it.type === "person",
+  );
+  void persons; // eslint shut-up; we use it conceptually below
 
   const showingRange = useMemo(() => {
     if (total === 0) return "0";
@@ -135,15 +164,19 @@ export default function PersonList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Header strip — count only; search lives in the page toolbar above */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-bg-subtle/70 px-4 py-2.5 backdrop-blur-sm">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
-          People
-        </span>
-        <span className="text-[11px] tabular-nums text-text-tertiary">
-          {showingRange}
-        </span>
-      </div>
+      {/* Header strip — count only; search lives in the page toolbar above.
+          In compact mode the strip would be wider than the visible avatars,
+          so we hide it to keep the column tidy. */}
+      {!compact && (
+        <div className="flex shrink-0 items-center justify-between border-b border-border bg-bg-subtle/70 px-4 py-2.5 backdrop-blur-sm">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
+            People
+          </span>
+          <span className="text-[11px] tabular-nums text-text-tertiary">
+            {showingRange}
+          </span>
+        </div>
+      )}
 
       {/* Scrollable list — independent of the right pane */}
       <div className="smooth-scroll min-h-0 flex-1 overflow-y-auto">
@@ -151,7 +184,7 @@ export default function PersonList({
           <div className="flex flex-col items-center justify-center gap-2 px-4 py-16 text-center">
             <p className="text-sm font-light text-text-tertiary">Loading…</p>
           </div>
-        ) : people.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
             <p className="text-sm font-medium text-text-primary">
               No people found
@@ -162,7 +195,20 @@ export default function PersonList({
           </div>
         ) : (
           <ul className="divide-y divide-border/60">
-            {people.map((person) => {
+            {items.map((item) => {
+              if (item.type === "group") {
+                return (
+                  <GroupRow
+                    key={`g_${item.id}`}
+                    group={item}
+                    isSelected={selectedConversationId === item.id}
+                    onSelect={() => onSelectConversation(item)}
+                    onMarkRead={onMarkConversationRead}
+                    compact={compact}
+                  />
+                );
+              }
+              const person = item;
               const isSelected = selectedPersonId === person.id;
               const isChecked = selectedIds?.has(person.id) ?? false;
               const selectionMode = selectedIds !== undefined;
@@ -194,7 +240,11 @@ export default function PersonList({
                     data-testid="person-row"
                     data-person-id={person.id}
                     onClick={() => onSelectPerson(person)}
-                    className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left active:bg-text-primary/[0.04] sm:py-2"
+                    className={cn(
+                      "flex w-full items-start gap-2.5 px-3 py-2.5 text-left active:bg-text-primary/[0.04] sm:py-2",
+                      compact &&
+                        "items-center justify-center px-2 py-2 sm:py-1.5",
+                    )}
                   >
                     {/* Selection checkbox — appears on hover or when any selected.
                         Clicking it toggles selection without opening the person. */}
@@ -237,7 +287,7 @@ export default function PersonList({
                     {/* Avatar — hidden behind checkbox when hovering in selection mode */}
                     <span
                       className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tracking-tight",
+                        "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tracking-tight",
                         selectionMode &&
                           (anySelected || isChecked) &&
                           "hidden sm:flex",
@@ -245,9 +295,19 @@ export default function PersonList({
                       style={{ backgroundColor: color.bg, color: color.fg }}
                     >
                       {initials(person.name, person.email)}
+                      {/* In compact mode, the unread badge is anchored to the avatar */}
+                      {compact && person.unreadCount > 0 && (
+                        <span
+                          className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white ring-2 ring-bg-subtle"
+                          style={{ backgroundColor: "#7c5cfc" }}
+                          aria-label={`${person.unreadCount} unread`}
+                        >
+                          {person.unreadCount}
+                        </span>
+                      )}
                     </span>
 
-                    <div className="min-w-0 flex-1">
+                    <div className={cn("min-w-0 flex-1", compact && "hidden")}>
                       <div className="flex items-baseline justify-between gap-3">
                         <span
                           className={cn(
@@ -325,7 +385,7 @@ export default function PersonList({
                     </div>
                   </button>
 
-                  {isAdmin && (
+                  {isAdmin && !compact && (
                     <button
                       data-testid="person-kebab-menu"
                       data-person-id={person.id}
@@ -372,7 +432,10 @@ export default function PersonList({
               data-testid="person-delete-button"
               onClick={(e) => {
                 e.stopPropagation();
-                const person = people.find((p) => p.id === menuOpenId);
+                const person = items.find(
+                  (it): it is GroupedPerson =>
+                    it.type === "person" && it.id === menuOpenId,
+                );
                 if (person) handleDeletePerson(person);
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-600 transition-colors hover:bg-red-50"

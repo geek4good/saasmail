@@ -28,7 +28,7 @@ import SequencesPage from "@/pages/SequencesPage";
 import SequenceDetailPage from "@/pages/SequenceDetailPage";
 import SequenceEditorPage from "@/pages/SequenceEditorPage";
 import InboxesPage from "./pages/InboxesPage";
-import NotificationsSettingsPage from "@/pages/NotificationsSettingsPage";
+import SettingsPage from "@/pages/SettingsPage";
 
 const queryClient = new QueryClient();
 
@@ -145,10 +145,7 @@ function App() {
                 <Route path="/sequences/:id" element={<SequenceDetailPage />} />
                 <Route path="/api-keys" element={<ApiKeysPage />} />
                 <Route path="/inboxes" element={<InboxesPage />} />
-                <Route
-                  path="/settings"
-                  element={<NotificationsSettingsPage />}
-                />
+                <Route path="/settings" element={<SettingsPage />} />
                 {/* Deep link from Web Push notifications — see
                     worker/src/do/notifications.ts where data.url is set. */}
                 <Route path="/inbox/:inbox/:personId" element={<InboxPage />} />

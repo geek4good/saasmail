@@ -1,11 +1,20 @@
 import { useState, useRef, useEffect } from "react";
+import { Maximize2 } from "lucide-react";
 import { replyToEmail, sendEmail } from "@/lib/api";
+import { dispatchEmailSent } from "@/lib/email-events";
 
 interface ChatQuickReplyProps {
   inboxAddress: string; // From address, fixed to this section's inbox
   latestReceivedEmailId: string | null; // What we reply to; if null, send as new email
   personEmail: string; // Recipient address when no reply target exists
   onSent: () => void; // Refetch + scroll
+  /**
+   * Optional handoff to the global compose drawer. When provided, the
+   * reply box renders an "open in compose" affordance — for replies
+   * that need the full editor (different sender identity, CC a
+   * teammate, attachments, custom subject).
+   */
+  onOpenCompose?: () => void;
 }
 
 // Wrap user-entered plain text into the minimal HTML the existing reply route
@@ -33,6 +42,7 @@ export default function ChatQuickReply({
   latestReceivedEmailId,
   personEmail,
   onSent,
+  onOpenCompose,
 }: ChatQuickReplyProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -71,6 +81,11 @@ export default function ChatQuickReply({
           bodyText: text,
         });
       }
+      dispatchEmailSent({
+        fromAddress: inboxAddress,
+        to: personEmail,
+        origin: "chat-quick-reply",
+      });
       setText("");
       onSent();
     } catch (e) {
@@ -103,6 +118,17 @@ export default function ChatQuickReply({
           }
           className="flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:text-text-tertiary"
         />
+        {onOpenCompose && (
+          <button
+            type="button"
+            onClick={onOpenCompose}
+            title="Open in full compose (change sender, add CC, attachments…)"
+            aria-label="Open in full compose"
+            className="shrink-0 rounded-[8px] p-2 text-text-tertiary transition-colors hover:bg-bg-muted hover:text-text-primary"
+          >
+            <Maximize2 size={14} />
+          </button>
+        )}
         <button
           type="button"
           onClick={handleSend}
@@ -119,6 +145,18 @@ export default function ChatQuickReply({
           <span className="text-[11px] font-light text-text-tertiary">
             Sending from <span className="font-medium">{inboxAddress}</span> ·
             ⌘/Ctrl + Enter to send
+            {onOpenCompose && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={onOpenCompose}
+                  className="font-medium text-text-secondary underline-offset-2 hover:text-text-primary hover:underline"
+                >
+                  open in compose
+                </button>
+              </>
+            )}
           </span>
         )}
       </div>

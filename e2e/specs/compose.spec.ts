@@ -28,11 +28,13 @@ test.describe.serial("compose & send", () => {
     // Click Compose button in sidebar
     await page.getByRole("button", { name: "Compose" }).click();
 
-    // Wait for the compose dialog to open
+    // Wait for the compose dialog to open. The slim tray header now
+    // reads "New message" (or "New message · <recipient>" once To is
+    // filled) — match case-insensitively to cover both states.
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(
-      dialog.getByRole("heading", { name: "Compose" }),
+      dialog.getByRole("heading", { name: /new message/i }),
     ).toBeVisible();
 
     // Fill in To field

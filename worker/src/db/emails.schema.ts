@@ -15,6 +15,20 @@ export const emails = sqliteTable(
     dkim: text("dkim"),
     dmarc: text("dmarc"),
     isRead: integer("is_read").notNull().default(0),
+    /**
+     * JSON-encoded array of {"email","name"} objects for additional
+     * recipients on the inbound CC line. NULL = no CC. Stored as TEXT
+     * so we can keep the schema flat — see migration 0021 for rationale.
+     */
+    cc: text("cc"),
+    /**
+     * Group-thread identity. When 2+ external participants are in this
+     * email's thread, this column is set to a deterministic hash of
+     * (inbox, sorted-external-emails). NULL means a 1-on-1 thread — the
+     * inbox list falls back to per-person grouping in that case.
+     * See migration 0022.
+     */
+    conversationId: text("conversation_id"),
     receivedAt: integer("received_at").notNull(),
     createdAt: integer("created_at").notNull(),
   },

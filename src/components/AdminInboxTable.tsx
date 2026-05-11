@@ -7,7 +7,9 @@ import {
   Trash2,
   X,
   Loader2,
+  Pen,
 } from "lucide-react";
+import TiptapEditor from "@/components/TiptapEditor";
 import {
   createInbox,
   deleteInbox,
@@ -35,6 +37,10 @@ export default function AdminInboxTable() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Email of the inbox currently having its signature edited (null = none open).
+  const [signatureEditingFor, setSignatureEditingFor] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     Promise.all([fetchAdminInboxes(), fetchAdminUsers()])
@@ -112,10 +118,31 @@ export default function AdminInboxTable() {
     setInboxes((prev) =>
       prev.map((r) =>
         r.email === inbox.email
-          ? { ...r, displayName: res.displayName, displayMode: res.displayMode }
+          ? {
+              ...r,
+              displayName: res.displayName,
+              displayMode: res.displayMode,
+              signatureHtml: res.signatureHtml,
+            }
           : r,
       ),
     );
+  }
+
+  async function commitSignature(inbox: AdminInbox, html: string) {
+    // Treat an empty Tiptap doc as "no signature" so admins can clear it
+    // without remembering the canonical empty form.
+    const stripped = html.trim();
+    const next = stripped === "" || stripped === "<p></p>" ? null : stripped;
+    const res = await updateInboxSettings(inbox.email, { signatureHtml: next });
+    setInboxes((prev) =>
+      prev.map((r) =>
+        r.email === inbox.email
+          ? { ...r, signatureHtml: res.signatureHtml }
+          : r,
+      ),
+    );
+    setSignatureEditingFor(null);
   }
 
   async function handleSetMode(inbox: AdminInbox, next: "thread" | "chat") {
@@ -308,6 +335,20 @@ export default function AdminInboxTable() {
         </div>
       )}
 
+      {/* Signature editor modal — rendered above the table */}
+      {signatureEditingFor &&
+        (() => {
+          const target = inboxes.find((i) => i.email === signatureEditingFor);
+          if (!target) return null;
+          return (
+            <SignatureEditor
+              inbox={target}
+              onCancel={() => setSignatureEditingFor(null)}
+              onSave={(html) => commitSignature(target, html)}
+            />
+          );
+        })()}
+
       {/* Table */}
       {inboxes.length > 0 && (
         <div className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
@@ -324,6 +365,7 @@ export default function AdminInboxTable() {
                   </th>
                   <th className="px-3 py-2.5 font-semibold">Address</th>
                   <th className="px-3 py-2.5 font-semibold">Display name</th>
+                  <th className="px-3 py-2.5 font-semibold">Signature</th>
                   <th className="px-3 py-2.5 font-semibold">Mode</th>
                   <th className="px-3 py-2.5 font-semibold">Members</th>
                   <th className="w-16 px-3 py-2.5 text-right font-semibold">
@@ -375,6 +417,32 @@ export default function AdminInboxTable() {
                           inbox={inbox}
                           onCommit={(v) => commitName(inbox, v)}
                         />
+                      </td>
+
+                      {/* Signature — Edit button + status badge */}
+                      <td className="px-3 py-2.5">
+                        <button
+                          type="button"
+                          data-testid="inbox-signature-edit-button"
+                          onClick={() => setSignatureEditingFor(inbox.email)}
+                          className={cn(
+                            "inline-flex h-7 items-center gap-1.5 rounded-[6px] border px-2 text-[11px] font-medium transition-colors",
+                            inbox.signatureHtml
+                              ? "border-violet/30 bg-violet/10 text-violet"
+                              : "border-border bg-bg-muted/40 text-text-tertiary hover:border-text-primary/30 hover:text-text-secondary",
+                          )}
+                          style={
+                            inbox.signatureHtml
+                              ? { color: "#7c5cfc" }
+                              : undefined
+                          }
+                        >
+                          <Pen size={11} />
+                          {inbox.signatureHtml ? "Set" : "—"}
+                          <span className="ml-0.5 text-[10px] font-light opacity-70">
+                            Edit
+                          </span>
+                        </button>
                       </td>
 
                       {/* Mode */}
@@ -505,6 +573,87 @@ function DisplayNameInput({ inbox, onCommit }: DisplayNameInputProps) {
       data-testid="inbox-display-name-input"
       className="h-8 w-full rounded-[6px] border border-transparent bg-transparent px-2 text-sm text-text-primary placeholder:font-light placeholder:italic placeholder:text-text-tertiary hover:border-border focus:border-border focus:bg-card focus:outline-none focus:ring-2 focus:ring-text-primary/15"
     />
+  );
+}
+
+interface SignatureEditorProps {
+  inbox: AdminInbox;
+  onCancel: () => void;
+  onSave: (html: string) => Promise<void>;
+}
+
+/**
+ * Inline rich-text editor for an inbox's auto-attached signature. Caps at
+ * ~200px tall so it stays compact in the admin table view; admins typically
+ * paste 2–4 lines of plain text + a link.
+ */
+function SignatureEditor({ inbox, onCancel, onSave }: SignatureEditorProps) {
+  const [html, setHtml] = useState(inbox.signatureHtml ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(html);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      data-testid="inbox-signature-editor"
+      className="rounded-[8px] bg-card p-4 ring-1 ring-border"
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="mb-0.5 text-[11px] font-medium uppercase tracking-wider text-text-tertiary">
+            Signature
+          </div>
+          <p className="truncate text-xs text-text-secondary">
+            <span className="font-mono">{inbox.email}</span>
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-[6px] p-1 text-text-tertiary hover:bg-bg-muted hover:text-text-primary"
+          aria-label="Close signature editor"
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <div className="max-h-[200px] overflow-auto rounded-[6px] border border-border bg-card">
+        <TiptapEditor
+          content={html}
+          onUpdate={setHtml}
+          placeholder="Cheers, the Team"
+        />
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-[6px] border border-border bg-card px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          data-testid="inbox-signature-save-button"
+          onClick={handleSave}
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 rounded-[6px] bg-text-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-text-primary/90 disabled:opacity-50"
+        >
+          {saving ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Pen size={12} />
+          )}
+          Save signature
+        </button>
+      </div>
+    </div>
   );
 }
 

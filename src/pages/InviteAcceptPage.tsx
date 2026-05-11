@@ -6,7 +6,7 @@ import { WordmarkLarge } from "@/components/Wordmark";
 import { useBranding } from "@/lib/branding";
 
 export default function InviteAcceptPage() {
-  const { passkeyRequired } = useBranding();
+  const { passkeyRequired, brandName } = useBranding();
   const { token } = useParams<{ token: string }>();
   const [status, setStatus] = useState<"loading" | "valid" | "invalid">(
     "loading",
@@ -101,7 +101,7 @@ export default function InviteAcceptPage() {
       <div className="w-full rounded-2xl bg-white/10 p-8 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl">
         <div className="mb-6">
           <h2 className="text-xl font-extrabold tracking-tight text-white">
-            Join saasmail
+            Join {brandName}
           </h2>
           <p className="mt-1.5 text-sm font-light text-white/60">
             Create your account to get started.

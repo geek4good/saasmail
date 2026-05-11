@@ -39,6 +39,7 @@ const PersonSchema = z.object({
 
 // Grouped people (unique people, aggregated across all recipients)
 const GroupedPersonSchema = z.object({
+  type: z.literal("person"),
   id: z.string(),
   email: z.string(),
   name: z.string().nullable(),
@@ -50,12 +51,45 @@ const GroupedPersonSchema = z.object({
   hasAttachment: z.number(),
 });
 
+// Group conversation row — represents a single multi-participant thread.
+// Surfaced alongside person rows in the inbox list (sorted together by
+// lastEmailAt). The participants array contains the senders (people) who
+// posted into the thread; ccParticipants is the de-duped set of CC contacts
+// (which may not be `people` rows since they're external).
+const GroupedConversationSchema = z.object({
+  type: z.literal("group"),
+  id: z.string(),
+  inbox: z.string(),
+  participants: z.array(
+    z.object({
+      id: z.string(),
+      email: z.string(),
+      name: z.string().nullable(),
+    }),
+  ),
+  ccParticipants: z.array(
+    z.object({
+      email: z.string(),
+      name: z.string().nullable(),
+    }),
+  ),
+  lastEmailAt: z.number(),
+  unreadCount: z.number(),
+  totalCount: z.number(),
+  hasAttachment: z.number(),
+});
+
+const GroupedItemSchema = z.discriminatedUnion("type", [
+  GroupedPersonSchema,
+  GroupedConversationSchema,
+]);
+
 const listGroupedPeopleRoute = createRoute({
   method: "get",
   path: "/grouped",
   tags: ["People"],
   description:
-    "List people grouped by person (aggregated across all recipients).",
+    "List people and group conversations together (sorted by most recent activity).",
   request: {
     query: z.object({
       q: z
@@ -73,6 +107,18 @@ const listGroupedPeopleRoute = createRoute({
         .enum(["1", "true"])
         .optional()
         .openapi({ description: "Only people with downloadable attachments" }),
+      sort: z
+        .enum(["recency", "unread", "inbox", "attachments"])
+        .optional()
+        .default("recency")
+        .openapi({
+          description:
+            "Sort key. Direction is controlled by the separate `direction` param.",
+        }),
+      direction: z.enum(["asc", "desc"]).optional().openapi({
+        description:
+          "Sort direction. When omitted, defaults to the natural direction for the chosen sort key (recency/unread/attachments default to desc; inbox defaults to asc).",
+      }),
       page: z.coerce.number().optional().default(1),
       limit: z.coerce.number().optional().default(50),
     }),
@@ -80,37 +126,58 @@ const listGroupedPeopleRoute = createRoute({
   responses: {
     ...json200Response(
       z.object({
-        data: z.array(GroupedPersonSchema),
+        data: z.array(GroupedItemSchema),
         total: z.number(),
         page: z.number(),
         limit: z.number(),
+        // Aggregates over the *filtered* set (not just the page) — power
+        // the stat tiles in table view so they reflect every row that
+        // matches the current filters, not just the 40 on screen.
+        aggregates: z.object({
+          unreadRowCount: z.number(),
+          attachmentRowCount: z.number(),
+          multiInboxRowCount: z.number(),
+          /**
+           * Sum of unread emails across the filtered set — useful for
+           * the navbar's "you have N unread" feel.
+           */
+          totalUnreadEmails: z.number(),
+        }),
       }),
-      "Paginated list of grouped people",
+      "Paginated list of grouped people + group conversations",
     ),
   },
 });
 
 peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
   const db = c.get("db");
-  const { q, recipient, unread, hasAttachment, page, limit } =
+  const { q, recipient, unread, hasAttachment, sort, direction, page, limit } =
     c.req.valid("query");
   const offset = (page - 1) * limit;
+  // Resolve effective direction. Each sort key has a "natural" default
+  // (recency/unread/attachments → desc, inbox → asc) so the UI can
+  // pass `direction: undefined` to mean "use the natural one for this
+  // key". Explicit values from the client always win.
+  const naturalDirection: "asc" | "desc" = sort === "inbox" ? "asc" : "desc";
+  const effectiveDirection: "asc" | "desc" = direction ?? naturalDirection;
 
   const allowed = c.get("allowedInboxes")!;
-  const conditions: any[] = [];
+
+  // ----- PERSON ROWS (1-on-1 threads only — conversation_id IS NULL) -----
+  const personConditions: any[] = [];
   if (recipient) {
-    conditions.push(
-      sql`s.id IN (SELECT person_id FROM emails WHERE recipient = ${recipient})`,
+    personConditions.push(
+      sql`s.id IN (SELECT person_id FROM emails WHERE recipient = ${recipient} AND conversation_id IS NULL)`,
     );
   }
   if (unread) {
-    conditions.push(
-      sql`s.id IN (SELECT person_id FROM emails WHERE is_read = 0)`,
+    personConditions.push(
+      sql`s.id IN (SELECT person_id FROM emails WHERE is_read = 0 AND conversation_id IS NULL)`,
     );
   }
   if (hasAttachment) {
-    conditions.push(
-      sql`s.id IN (SELECT e2.person_id FROM emails e2 JOIN ${attachments} a ON a.email_id = e2.id WHERE a.content_id IS NULL)`,
+    personConditions.push(
+      sql`s.id IN (SELECT e2.person_id FROM emails e2 JOIN ${attachments} a ON a.email_id = e2.id WHERE a.content_id IS NULL AND e2.conversation_id IS NULL)`,
     );
   }
   if (q) {
@@ -121,37 +188,35 @@ peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
       : allowed.inboxes.length === 0
         ? sql`AND 0`
         : sql`AND emails.recipient IN ${allowed.inboxes}`;
-    conditions.push(
+    personConditions.push(
       sql`(s.email LIKE ${pattern} ESCAPE '\\' OR s.name LIKE ${pattern} ESCAPE '\\'
         OR s.id IN (
           SELECT person_id FROM emails
           JOIN emails_fts ON emails.rowid = emails_fts.rowid
-          WHERE emails_fts MATCH ${ftsQuery} ${ftsInboxScope}
+          WHERE emails_fts MATCH ${ftsQuery} ${ftsInboxScope} AND emails.conversation_id IS NULL
         ))`,
     );
   }
   const scopeClause = peopleScopeClause(allowed);
-  const extraConditions =
-    conditions.length > 0
-      ? sql`AND ${sql.join(conditions, sql` AND `)}`
+  const personExtraConditions =
+    personConditions.length > 0
+      ? sql`AND ${sql.join(personConditions, sql` AND `)}`
       : sql``;
-  const whereClause = sql`WHERE 1=1 ${extraConditions} ${scopeClause}`;
+  const personWhereClause = sql`WHERE 1=1 ${personExtraConditions} ${scopeClause}`;
 
   // Aggregate over both received and sent emails so people we've composed to
-  // appear in the list, not just senders who have emailed us. Sent rows
-  // contribute to totalCount / lastEmailAt / recipientCount but never to
-  // unreadCount (we read everything we send). Attachments are still computed
-  // against received emails since sent emails don't have an attachments link.
+  // appear in the list, not just senders who have emailed us. We exclude
+  // any rows with a non-null conversation_id — those belong under group rows.
   const activity = sql`(
-    SELECT person_id, recipient AS inbox, received_at AS at, is_read
+    SELECT person_id, recipient AS inbox, received_at AS at, is_read, conversation_id
     FROM ${emails}
     UNION ALL
-    SELECT person_id, from_address AS inbox, sent_at AS at, 1 AS is_read
+    SELECT person_id, from_address AS inbox, sent_at AS at, 1 AS is_read, conversation_id
     FROM ${sentEmails}
     WHERE person_id IS NOT NULL
   )`;
 
-  const rows = await db.all<{
+  const personRowsRaw = await db.all<{
     id: string;
     email: string;
     name: string | null;
@@ -176,15 +241,17 @@ peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
         JOIN ${emails} e2 ON e2.id = a.email_id
         WHERE e2.person_id = s.id
         AND a.content_id IS NULL
+        AND e2.conversation_id IS NULL
       ) AS hasAttachment
     FROM ${activity} e
     JOIN ${people} s ON s.id = e.person_id
-    ${whereClause}
+    ${personWhereClause}
+    AND e.conversation_id IS NULL
     GROUP BY s.id
     ORDER BY lastEmailAt DESC
-    LIMIT ${limit} OFFSET ${offset}
   `);
-  const data = rows.map((r) => ({
+  const personRows = personRowsRaw.map((r) => ({
+    type: "person" as const,
     id: r.id,
     email: r.email,
     name: r.name,
@@ -196,17 +263,289 @@ peopleRouter.openapi(listGroupedPeopleRoute, async (c) => {
     hasAttachment: r.hasAttachment,
   }));
 
-  const countResult = await db.all<{ count: number }>(sql`
-    SELECT COUNT(*) AS count FROM (
-      SELECT 1 FROM ${activity} e
-      JOIN ${people} s ON s.id = e.person_id
-      ${whereClause}
-      GROUP BY s.id
-    )
-  `);
-  const total = countResult[0]?.count ?? 0;
+  // ----- GROUP CONVERSATION ROWS (conversation_id IS NOT NULL) -----
+  // Activity-style subquery scoped to the inbox set the user can see.
+  const groupInboxScope = allowed.isAdmin
+    ? sql``
+    : allowed.inboxes.length === 0
+      ? sql`AND 0`
+      : sql`AND inbox IN ${allowed.inboxes}`;
 
-  return c.json({ data, total, page, limit }, 200);
+  const groupConditions: any[] = [];
+  if (recipient) {
+    groupConditions.push(sql`g.inbox = ${recipient}`);
+  }
+  if (unread) {
+    groupConditions.push(sql`g.unreadCount > 0`);
+  }
+  if (hasAttachment) {
+    groupConditions.push(sql`g.hasAttachment = 1`);
+  }
+  if (q) {
+    const pattern = `%${escapeLike(q)}%`;
+    // Match by participant email/name, or any group-email subject/body via FTS,
+    // or sent-email subject via LIKE (sent_emails has no FTS index).
+    const ftsQuery = escapeFts(q);
+    const ftsInboxScope = allowed.isAdmin
+      ? sql``
+      : allowed.inboxes.length === 0
+        ? sql`AND 0`
+        : sql`AND emails.recipient IN ${allowed.inboxes}`;
+    groupConditions.push(sql`(
+      g.conversation_id IN (
+        SELECT DISTINCT e.conversation_id FROM ${emails} e
+        JOIN ${people} p ON p.id = e.person_id
+        WHERE e.conversation_id IS NOT NULL
+        AND (p.email LIKE ${pattern} ESCAPE '\\' OR p.name LIKE ${pattern} ESCAPE '\\')
+      )
+      OR g.conversation_id IN (
+        SELECT emails.conversation_id FROM emails
+        JOIN emails_fts ON emails.rowid = emails_fts.rowid
+        WHERE emails_fts MATCH ${ftsQuery} AND emails.conversation_id IS NOT NULL ${ftsInboxScope}
+      )
+      OR g.conversation_id IN (
+        SELECT conversation_id FROM ${sentEmails}
+        WHERE conversation_id IS NOT NULL AND subject LIKE ${pattern} ESCAPE '\\'
+      )
+    )`);
+  }
+  const groupExtraConditions =
+    groupConditions.length > 0
+      ? sql`AND ${sql.join(groupConditions, sql` AND `)}`
+      : sql``;
+
+  const groupRowsRaw = await db.all<{
+    conversation_id: string;
+    inbox: string;
+    lastEmailAt: number;
+    unreadCount: number;
+    totalCount: number;
+    hasAttachment: number;
+  }>(sql`
+    SELECT
+      g.conversation_id,
+      g.inbox,
+      g.lastEmailAt,
+      g.unreadCount,
+      g.totalCount,
+      g.hasAttachment
+    FROM (
+      SELECT
+        conversation_id,
+        inbox,
+        MAX(at) AS lastEmailAt,
+        SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unreadCount,
+        COUNT(*) AS totalCount,
+        EXISTS(
+          SELECT 1 FROM ${attachments} a
+          JOIN ${emails} e2 ON e2.id = a.email_id
+          WHERE e2.conversation_id = act.conversation_id
+          AND a.content_id IS NULL
+        ) AS hasAttachment
+      FROM (
+        SELECT conversation_id, recipient AS inbox, received_at AS at, is_read
+        FROM ${emails}
+        WHERE conversation_id IS NOT NULL
+        UNION ALL
+        SELECT conversation_id, from_address AS inbox, sent_at AS at, 1 AS is_read
+        FROM ${sentEmails}
+        WHERE conversation_id IS NOT NULL
+      ) act
+      WHERE 1=1 ${groupInboxScope}
+      GROUP BY conversation_id, inbox
+    ) g
+    WHERE 1=1 ${groupExtraConditions}
+    ORDER BY g.lastEmailAt DESC
+  `);
+
+  // Resolve participants (senders/people who posted into the thread) and
+  // CC participants (raw email/name pairs from the cc JSON column) for each
+  // group row, in two follow-up queries — keeps SQL simpler than crafting
+  // a single mega-join.
+  let groupRows: Array<{
+    type: "group";
+    id: string;
+    inbox: string;
+    participants: Array<{ id: string; email: string; name: string | null }>;
+    ccParticipants: Array<{ email: string; name: string | null }>;
+    lastEmailAt: number;
+    unreadCount: number;
+    totalCount: number;
+    hasAttachment: number;
+  }> = [];
+  if (groupRowsRaw.length > 0) {
+    const ids = groupRowsRaw.map((r) => r.conversation_id);
+
+    // Participants — senders (from `emails`) + outbound senders (from
+    // `sent_emails` joined to `people` when person_id is set).
+    const participantRows = await db.all<{
+      conversation_id: string;
+      id: string;
+      email: string;
+      name: string | null;
+    }>(sql`
+      SELECT DISTINCT e.conversation_id, s.id, s.email, s.name
+      FROM ${emails} e
+      JOIN ${people} s ON s.id = e.person_id
+      WHERE e.conversation_id IN ${ids}
+      UNION
+      SELECT DISTINCT se.conversation_id, s.id, s.email, s.name
+      FROM ${sentEmails} se
+      JOIN ${people} s ON s.id = se.person_id
+      WHERE se.conversation_id IN ${ids} AND se.person_id IS NOT NULL
+    `);
+    const participantsByConv = new Map<
+      string,
+      Array<{ id: string; email: string; name: string | null }>
+    >();
+    for (const r of participantRows) {
+      const list = participantsByConv.get(r.conversation_id) ?? [];
+      // Dedupe by id (UNION at SQL level can still produce dupes across the
+      // two branches because the joins differ).
+      if (!list.some((p) => p.id === r.id)) {
+        list.push({ id: r.id, email: r.email, name: r.name });
+      }
+      participantsByConv.set(r.conversation_id, list);
+    }
+
+    // CC participants — pull `cc` JSON from both emails + sent_emails rows in
+    // each conversation, parse, dedupe by lowercased email. Skip parse errors.
+    const ccRows = await db.all<{
+      conversation_id: string;
+      cc: string | null;
+    }>(sql`
+      SELECT conversation_id, cc FROM ${emails}
+      WHERE conversation_id IN ${ids} AND cc IS NOT NULL
+      UNION ALL
+      SELECT conversation_id, cc FROM ${sentEmails}
+      WHERE conversation_id IN ${ids} AND cc IS NOT NULL
+    `);
+    const ccByConv = new Map<
+      string,
+      Map<string, { email: string; name: string | null }>
+    >();
+    for (const r of ccRows) {
+      if (!r.cc) continue;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(r.cc);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(parsed)) continue;
+      let map = ccByConv.get(r.conversation_id);
+      if (!map) {
+        map = new Map();
+        ccByConv.set(r.conversation_id, map);
+      }
+      for (const entry of parsed) {
+        if (!entry || typeof entry.email !== "string") continue;
+        const key = entry.email.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            email: entry.email,
+            name: typeof entry.name === "string" ? entry.name : null,
+          });
+        }
+      }
+    }
+
+    // Sender-side exclusion: if a participant also appears in CC, drop the CC
+    // entry — they're already represented as a participant.
+    groupRows = groupRowsRaw.map((r) => {
+      const participants = participantsByConv.get(r.conversation_id) ?? [];
+      const senderEmails = new Set(
+        participants.map((p) => p.email.toLowerCase()),
+      );
+      const ccMap = ccByConv.get(r.conversation_id);
+      const ccParticipants = ccMap
+        ? Array.from(ccMap.values()).filter(
+            (cc) => !senderEmails.has(cc.email.toLowerCase()),
+          )
+        : [];
+      return {
+        type: "group" as const,
+        id: r.conversation_id,
+        inbox: r.inbox,
+        participants,
+        ccParticipants,
+        lastEmailAt: r.lastEmailAt,
+        unreadCount: r.unreadCount,
+        totalCount: r.totalCount,
+        hasAttachment: r.hasAttachment,
+      };
+    });
+  }
+
+  // Merge persons + groups, sort, paginate. Recency is the secondary
+  // tiebreaker (most-recent first) for every sort except recency itself
+  // — the user's mental model is "newest first within the bucket".
+  // Direction flips only the *primary* key; the recency tiebreaker
+  // stays desc so newer items always come up first within a tie.
+  type Row = (typeof personRows)[number] | (typeof groupRows)[number];
+  const inboxOf = (r: Row): string =>
+    r.type === "person" ? (r.recipients[0] ?? "") : r.inbox;
+  const merged: Row[] = [...personRows, ...groupRows];
+  const sign = effectiveDirection === "asc" ? -1 : 1;
+  switch (sort) {
+    case "unread":
+      merged.sort(
+        (a, b) =>
+          sign * (b.unreadCount - a.unreadCount) ||
+          b.lastEmailAt - a.lastEmailAt,
+      );
+      break;
+    case "inbox":
+      merged.sort((a, b) => {
+        const ia = inboxOf(a).toLowerCase();
+        const ib = inboxOf(b).toLowerCase();
+        if (ia !== ib) return -sign * ia.localeCompare(ib);
+        return b.lastEmailAt - a.lastEmailAt;
+      });
+      break;
+    case "attachments":
+      merged.sort(
+        (a, b) =>
+          sign * (b.hasAttachment - a.hasAttachment) ||
+          b.lastEmailAt - a.lastEmailAt,
+      );
+      break;
+    case "recency":
+    default:
+      merged.sort((a, b) => sign * (b.lastEmailAt - a.lastEmailAt));
+      break;
+  }
+  const total = merged.length;
+  // Aggregate stats over the FILTERED set (not just the page). The
+  // table view's stat tiles read these so they don't lie when the
+  // result spans multiple pages.
+  let unreadRowCount = 0;
+  let attachmentRowCount = 0;
+  let multiInboxRowCount = 0;
+  let totalUnreadEmails = 0;
+  for (const r of merged) {
+    if (r.unreadCount > 0) unreadRowCount++;
+    if (r.hasAttachment === 1) attachmentRowCount++;
+    if (r.type === "person" && r.recipientCount > 1) multiInboxRowCount++;
+    totalUnreadEmails += r.unreadCount;
+  }
+  const data = merged.slice(offset, offset + limit);
+
+  return c.json(
+    {
+      data,
+      total,
+      page,
+      limit,
+      aggregates: {
+        unreadRowCount,
+        attachmentRowCount,
+        multiInboxRowCount,
+        totalUnreadEmails,
+      },
+    },
+    200,
+  );
 });
 
 const listPeopleRoute = createRoute({

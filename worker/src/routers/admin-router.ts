@@ -2,8 +2,12 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { eq, sql } from "drizzle-orm";
 import { users, passkeys } from "../db/auth.schema";
 import { invitations } from "../db/invitations.schema";
+import { appSettings } from "../db/app-settings.schema";
 import { json200Response, json201Response } from "../lib/helpers";
 import type { Variables } from "../variables";
+
+/** Default brand name when no row is set in app_settings. */
+const DEFAULT_BRAND_NAME = "saasmail";
 
 export const adminRouter = new OpenAPIHono<{
   Bindings: CloudflareBindings;
@@ -257,4 +261,93 @@ adminRouter.openapi(deleteUserRoute, async (c) => {
 
   await db.delete(users).where(eq(users.id, id));
   return c.json({ success: true as const }, 200);
+});
+
+// --- App Settings Endpoints ---
+
+const UpdateSettingsSchema = z.object({
+  // null clears the row and reverts to the built-in default.
+  brandName: z.string().nullable().optional(),
+});
+
+const SettingsResponseSchema = z.object({
+  brandName: z.string(),
+});
+
+const updateSettingsRoute = createRoute({
+  method: "patch",
+  path: "/settings",
+  tags: ["Admin"],
+  description:
+    "Update app-wide settings (currently: brand name). Pass `null` to reset to the default.",
+  request: {
+    body: {
+      content: { "application/json": { schema: UpdateSettingsSchema } },
+    },
+  },
+  responses: {
+    ...json200Response(SettingsResponseSchema, "Settings updated"),
+    400: {
+      description: "Invalid request",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+adminRouter.openapi(updateSettingsRoute, async (c) => {
+  const db = c.get("db");
+  const currentUser = c.get("user");
+  const body = c.req.valid("json");
+
+  // Only act on brand_name if the field is present in the body. `undefined`
+  // means "no change", `null` means "reset to default".
+  if ("brandName" in body) {
+    const rawValue = body.brandName;
+    let storedValue: string | null;
+    if (rawValue === null) {
+      storedValue = null;
+    } else if (rawValue === undefined) {
+      // Defensive — `in` already narrowed this above, but keep the type check.
+      storedValue = null;
+    } else {
+      const trimmed = rawValue.trim();
+      if (trimmed.length < 1 || trimmed.length > 40) {
+        return c.json({ error: "Brand name must be 1-40 characters." }, 400);
+      }
+      storedValue = trimmed;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    // INSERT OR REPLACE via drizzle's onConflictDoUpdate — works with the
+    // primary-key uniqueness on `key`.
+    await db
+      .insert(appSettings)
+      .values({
+        key: "brand_name",
+        value: storedValue,
+        updatedAt: now,
+        updatedBy: currentUser?.id ?? null,
+      })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: {
+          value: storedValue,
+          updatedAt: now,
+          updatedBy: currentUser?.id ?? null,
+        },
+      });
+  }
+
+  // Always return the resolved value so the caller can update its UI.
+  const row = await db
+    .select({ value: appSettings.value })
+    .from(appSettings)
+    .where(eq(appSettings.key, "brand_name"))
+    .limit(1);
+  const resolved =
+    row.length > 0 && row[0].value && row[0].value.length > 0
+      ? row[0].value
+      : DEFAULT_BRAND_NAME;
+
+  return c.json({ brandName: resolved }, 200);
 });

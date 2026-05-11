@@ -1,11 +1,12 @@
 // e2e/specs/templates.spec.ts
 // Covers: template CRUD + iframe preview rendering.
 //
-// Preview mechanics: TemplateEditorPage uses a split-pane layout.
-// Left pane = HTML Source (CodeMirror). Right pane = an <iframe srcDoc={bodyHtml}>.
-// There are no variable-value input fields in the UI — the preview renders the
-// raw HTML including any {{variable}} tokens. Variable names are shown as read-only
-// badges in a "Variables" bar above the editor.
+// Preview mechanics: TemplateEditorPage uses a Code/Split/Preview view
+// toggle that defaults to split-pane. Left pane = HTML Source
+// (CodeMirror). Right pane = an <iframe srcDoc={bodyHtml}>. There are
+// no variable-value input fields in the UI — the preview renders the
+// raw HTML including any {{variable}} tokens. Variable names are shown
+// as read-only chips in a Variables row above the editor.
 //
 // The update API uses PUT /api/email-templates/:slug (not PATCH).
 
@@ -38,11 +39,13 @@ test.describe.serial("templates CRUD", () => {
     ).toBeVisible();
 
     // Navigate to the new-template editor
-    await page.getByRole("button", { name: "New Template" }).click();
+    await page.getByRole("button", { name: /new template/i }).click();
     await expect(page).toHaveURL(/\/templates\/new/);
 
-    // Fill metadata
-    await page.getByPlaceholder("Untitled Template").fill(tplName);
+    // Fill metadata. Editor placeholders changed in the design refresh:
+    //   Name placeholder: "Welcome email" (was "Untitled Template")
+    //   Slug + subject placeholders unchanged.
+    await page.getByPlaceholder("Welcome email").fill(tplName);
     await page.getByPlaceholder("welcome-email").fill(slug);
     await page.getByPlaceholder("Welcome, {{name}}!").fill(subject);
 
@@ -53,12 +56,13 @@ test.describe.serial("templates CRUD", () => {
     await page.keyboard.press("Delete");
     await page.keyboard.type(body);
 
-    // Variable badges should appear in the variables bar
+    // Variable chips render in the body card's variables row. Each chip
+    // is a <code> with the {{var}} text — match by content, not class.
     await expect(
-      page.locator("span.font-mono").filter({ hasText: "{{name}}" }),
+      page.locator("code").filter({ hasText: "{{name}}" }),
     ).toBeVisible();
     await expect(
-      page.locator("span.font-mono").filter({ hasText: "{{product}}" }),
+      page.locator("code").filter({ hasText: "{{product}}" }),
     ).toBeVisible();
 
     // Preview iframe should contain the typed HTML
@@ -66,8 +70,9 @@ test.describe.serial("templates CRUD", () => {
     await expect(previewFrame.locator("body")).toContainText("{{name}}");
     await expect(previewFrame.locator("body")).toContainText("{{product}}");
 
-    // Save and expect redirect back to /templates
-    await page.getByRole("button", { name: "Save" }).click();
+    // Save and expect redirect back to /templates. The header action
+    // button reads "Create template" in new mode, "Save changes" in edit.
+    await page.getByRole("button", { name: "Create template" }).click();
     await expect(page).toHaveURL(/\/templates$/);
 
     // Template row appears in the list
@@ -97,9 +102,7 @@ test.describe.serial("templates CRUD", () => {
 
     // Open the editor
     await page.goto(`/templates/${slug}/edit`);
-    await expect(page.getByPlaceholder("Untitled Template")).toHaveValue(
-      tplName,
-    );
+    await expect(page.getByPlaceholder("Welcome email")).toHaveValue(tplName);
 
     // Replace the HTML body
     const newBody = "<p>Updated body content</p>";
@@ -109,8 +112,8 @@ test.describe.serial("templates CRUD", () => {
     await page.keyboard.press("Delete");
     await page.keyboard.type(newBody);
 
-    // Save
-    await page.getByRole("button", { name: "Save" }).click();
+    // Save (button reads "Save changes" in edit mode)
+    await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page).toHaveURL(/\/templates$/);
 
     // Re-open the editor and verify content persisted

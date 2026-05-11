@@ -13,7 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate:dev": "wrangler d1 migrations apply saasmail-db --local",
     "db:migrate:prod": "wrangler d1 migrations apply saasmail-db --remote",
-    "db:seed:dev": "wrangler d1 execute saasmail-db --local --file=seeds/demo.sql",
+    "db:seed:dev": "wrangler d1 execute saasmail-db --local --file=seeds/demo.sql && bash seeds/upload-attachments.sh",
     "db:studio:dev": "drizzle-kit studio",
     "db:studio:prod": "NODE_ENV=production drizzle-kit studio",
     "cf-typegen": "node scripts/cf-typegen.mjs",

@@ -221,6 +221,129 @@ describe("admin inboxes router", () => {
     expect(res.status).toBe(400);
   });
 
+  it("PATCH persists signatureHtml and surfaces it in GET", async () => {
+    const { apiKey } = await createTestUser({ role: "admin" });
+    await createTestPerson();
+    await createTestEmail({ recipient: "a@x.com" });
+    const sig = "<p>Cheers, the Acme team</p>";
+    const patch = await authFetch(
+      `/api/admin/inboxes/${encodeURIComponent("a@x.com")}`,
+      {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ signatureHtml: sig }),
+      },
+    );
+    expect(patch.status).toBe(200);
+    const patchBody = (await patch.json()) as { signatureHtml: string | null };
+    expect(patchBody.signatureHtml).toBe(sig);
+
+    const list = await authFetch("/api/admin/inboxes", { apiKey });
+    const rows = (await list.json()) as Array<{
+      email: string;
+      signatureHtml: string | null;
+    }>;
+    const row = rows.find((r) => r.email === "a@x.com");
+    expect(row?.signatureHtml).toBe(sig);
+  });
+
+  it("PATCH sanitizes hostile signatureHtml before storage", async () => {
+    // Wiring test for the sanitize-signature layer. Full coverage of
+    // the sanitizer's strip rules lives in sanitize-signature.test.ts;
+    // here we just assert the route actually calls it — protects
+    // against someone unwiring sanitization in a future refactor.
+    const { apiKey } = await createTestUser({ role: "admin" });
+    await createTestPerson();
+    await createTestEmail({ recipient: "a@x.com" });
+    const hostile =
+      '<p onclick="alert(1)">hi</p>' +
+      "<script>alert(2)</script>" +
+      '<a href="javascript:alert(3)">x</a>';
+    const res = await authFetch(
+      `/api/admin/inboxes/${encodeURIComponent("a@x.com")}`,
+      {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ signatureHtml: hostile }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { signatureHtml: string | null };
+    expect(body.signatureHtml).not.toMatch(/<script/i);
+    expect(body.signatureHtml).not.toMatch(/\bon\w+\s*=/i);
+    expect(body.signatureHtml).not.toMatch(/href\s*=\s*"javascript:/i);
+    // Benign content survives.
+    expect(body.signatureHtml).toContain("<p>hi</p>");
+  });
+
+  it("PATCH rejects signatureHtml longer than the cap", async () => {
+    const { apiKey } = await createTestUser({ role: "admin" });
+    await createTestPerson();
+    await createTestEmail({ recipient: "a@x.com" });
+    // One byte over the cap is enough — zod fails the schema.
+    const tooLong = "<p>" + "x".repeat(20_001) + "</p>";
+    const res = await authFetch(
+      `/api/admin/inboxes/${encodeURIComponent("a@x.com")}`,
+      {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ signatureHtml: tooLong }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH with signatureHtml='' clears the stored signature", async () => {
+    const { apiKey } = await createTestUser({ role: "admin" });
+    const now = Math.floor(Date.now() / 1000);
+    await getDb().insert(senderIdentities).values({
+      email: "a@x.com",
+      displayName: "Alpha",
+      displayMode: "thread",
+      signatureHtml: "<p>old</p>",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const res = await authFetch(
+      `/api/admin/inboxes/${encodeURIComponent("a@x.com")}`,
+      {
+        apiKey,
+        method: "PATCH",
+        body: JSON.stringify({ signatureHtml: "" }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { signatureHtml: string | null };
+    expect(body.signatureHtml).toBeNull();
+  });
+
+  it("PATCH only deletes the row when ALL fields are at defaults", async () => {
+    const { apiKey } = await createTestUser({ role: "admin" });
+    const now = Math.floor(Date.now() / 1000);
+    // Row with only a signature configured — display fields at defaults.
+    await getDb().insert(senderIdentities).values({
+      email: "a@x.com",
+      displayName: null,
+      displayMode: "chat",
+      signatureHtml: "<p>sig</p>",
+      createdAt: now,
+      updatedAt: now,
+    });
+    // Patching the display fields back to defaults should NOT sparse-delete
+    // the row, because the signature is still set.
+    await authFetch(`/api/admin/inboxes/${encodeURIComponent("a@x.com")}`, {
+      apiKey,
+      method: "PATCH",
+      body: JSON.stringify({ displayName: null, displayMode: "chat" }),
+    });
+    const stillThere = await getDb()
+      .select()
+      .from(senderIdentities)
+      .where(eq(senderIdentities.email, "a@x.com"));
+    expect(stillThere).toHaveLength(1);
+    expect(stillThere[0].signatureHtml).toBe("<p>sig</p>");
+  });
+
   it("PUT assignments replaces the full member set", async () => {
     const { apiKey } = await createTestUser({
       id: "u-admin",

@@ -1,16 +1,117 @@
 import { useMemo } from "react";
-import { Paperclip, CheckCheck } from "lucide-react";
+import {
+  Paperclip,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  ArrowDown,
+  ArrowUp,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { GroupedPerson } from "@/lib/api";
+import {
+  defaultDirectionFor,
+  type GroupedItem,
+  type GroupedPerson,
+  type GroupedConversation,
+  type InboxAggregates,
+  type InboxSort,
+  type InboxSortSpec,
+} from "@/lib/api";
 
 interface PeopleTableProps {
-  people: GroupedPerson[];
+  /** Mixed list — both person and group rows render in the table. */
+  items: GroupedItem[];
   loading?: boolean;
   onSelectPerson: (person: GroupedPerson) => void;
+  onSelectConversation?: (conv: GroupedConversation) => void;
+  /** Selected person IDs (used for bulk-mark-read on persons). */
   selectedIds?: Set<string>;
   onToggleSelected?: (id: string) => void;
+  /** Selected conversation IDs (parallel state for groups). */
+  selectedConversationIds?: Set<string>;
+  onToggleSelectedConversation?: (id: string) => void;
+  /** Toggle "select all on page" — applies to both persons + groups. */
   onToggleSelectAll?: () => void;
   onMarkPersonRead?: (id: string) => void;
+  onMarkConversationRead?: (id: string) => void;
+  /** Active sort key + direction. Column headers act as toggles:
+   *  click the active key → flip direction; click another key →
+   *  switch to it with the natural default direction. */
+  sortSpec?: InboxSortSpec;
+  onSortChange?: (spec: InboxSortSpec) => void;
+  /** Pagination — total rows in the filtered set, current page, and
+   *  the page-size used by the parent to size each fetch. */
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  /** Aggregates over the *filtered* set so stat tiles show the truth
+   *  about the whole result, not just the visible page. */
+  aggregates?: InboxAggregates;
+}
+
+/**
+ * Clickable column-header label. Click toggles the sort direction
+ * when its key is the active sort; clicking a different column
+ * switches to that key with the natural default direction (recency/
+ * unread/attachments → desc, inbox → asc). The arrow flips ↑/↓ to
+ * match the active direction.
+ */
+function SortHeader({
+  label,
+  sortKey,
+  active,
+  onClick,
+  align = "left",
+}: {
+  label: string;
+  sortKey: InboxSort;
+  active: InboxSortSpec | undefined;
+  onClick: ((spec: InboxSortSpec) => void) | undefined;
+  align?: "left" | "right";
+}) {
+  const isActive = active?.key === sortKey;
+  const clickable = !!onClick;
+  function handleClick() {
+    if (!onClick) return;
+    if (isActive && active) {
+      onClick({
+        key: sortKey,
+        direction: active.direction === "asc" ? "desc" : "asc",
+      });
+    } else {
+      onClick({ key: sortKey, direction: defaultDirectionFor(sortKey) });
+    }
+  }
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={clickable ? handleClick : undefined}
+      className={cn(
+        "inline-flex items-center gap-1 transition-colors",
+        align === "right" && "flex-row-reverse",
+        clickable && "cursor-pointer hover:text-text-secondary",
+        isActive && "text-text-primary",
+        !clickable && "cursor-default",
+      )}
+      title={
+        clickable
+          ? isActive
+            ? `Sort by ${label.toLowerCase()} — click to flip direction`
+            : `Sort by ${label.toLowerCase()}`
+          : undefined
+      }
+    >
+      <span>{label}</span>
+      {isActive && active.direction === "asc" ? (
+        <ArrowUp size={10} className="shrink-0" aria-hidden />
+      ) : isActive ? (
+        <ArrowDown size={10} className="shrink-0" aria-hidden />
+      ) : null}
+    </button>
+  );
 }
 
 const AVATAR_PALETTE = [
@@ -87,39 +188,93 @@ function RowCheckbox({ checked, onChange, ariaLabel }: RowCheckboxProps) {
 }
 
 export default function PeopleTable({
-  people,
+  items,
   loading,
   onSelectPerson,
+  onSelectConversation,
   selectedIds,
   onToggleSelected,
+  selectedConversationIds,
+  onToggleSelectedConversation,
   onToggleSelectAll,
   onMarkPersonRead,
+  onMarkConversationRead,
+  sortSpec,
+  onSortChange,
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  aggregates,
 }: PeopleTableProps) {
+  // Person rows used for the bulk-select header checkbox.
+  // Group rows are still rendered, just not eligible for bulk selection
+  // (groups have their own per-row mark-read button).
+  const people = useMemo(
+    () => items.filter((it): it is GroupedPerson => it.type === "person"),
+    [items],
+  );
+  // Stats reflect the *whole filtered set* via server aggregates when
+  // available — falling back to current-page counts only if the
+  // parent didn't pass them. The fallback keeps this component
+  // useful for callers that don't paginate.
   const stats = useMemo(() => {
+    if (aggregates && typeof total === "number") {
+      return {
+        total,
+        unread: aggregates.unreadRowCount,
+        withAttachments: aggregates.attachmentRowCount,
+        multiInbox: aggregates.multiInboxRowCount,
+      };
+    }
     let unread = 0;
     let withAttachments = 0;
     let multiInbox = 0;
-    for (const p of people) {
-      unread += p.unreadCount;
-      if (p.hasAttachment === 1) withAttachments++;
-      if (p.recipientCount > 1) multiInbox++;
+    let groupCount = 0;
+    for (const it of items) {
+      if (it.type === "group") {
+        if (it.unreadCount > 0) unread++;
+        if (it.hasAttachment === 1) withAttachments++;
+        groupCount++;
+        continue;
+      }
+      if (it.unreadCount > 0) unread++;
+      if (it.hasAttachment === 1) withAttachments++;
+      if (it.recipientCount > 1) multiInbox++;
     }
+    void groupCount; // currently unused; kept for parity with prior behavior
     return {
-      total: people.length,
+      total: items.length,
       unread,
       withAttachments,
       multiInbox,
     };
-  }, [people]);
+  }, [items, aggregates, total]);
 
+  // "All on page" = all persons selected AND all groups selected. Same
+  // header checkbox flips both sets via onToggleSelectAll.
+  const groups = useMemo(
+    () => items.filter((it): it is GroupedConversation => it.type === "group"),
+    [items],
+  );
+  const allPersonsSelected =
+    people.length === 0 ||
+    (selectedIds !== undefined && people.every((p) => selectedIds.has(p.id)));
+  const allGroupsSelected =
+    groups.length === 0 ||
+    (selectedConversationIds !== undefined &&
+      groups.every((g) => selectedConversationIds.has(g.id)));
   const allOnPageSelected =
-    people.length > 0 &&
+    items.length > 0 &&
     selectedIds !== undefined &&
-    people.every((p) => selectedIds.has(p.id));
+    allPersonsSelected &&
+    allGroupsSelected;
 
   const someOnPageSelected =
     selectedIds !== undefined &&
-    people.some((p) => selectedIds.has(p.id)) &&
+    (people.some((p) => selectedIds.has(p.id)) ||
+      (selectedConversationIds !== undefined &&
+        groups.some((g) => selectedConversationIds.has(g.id)))) &&
     !allOnPageSelected;
 
   return (
@@ -138,7 +293,7 @@ export default function PeopleTable({
           <div className="flex h-full items-center justify-center text-sm text-text-tertiary">
             Loading…
           </div>
-        ) : people.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
             <p className="text-sm font-medium text-text-primary">
               No people match your filters
@@ -168,14 +323,61 @@ export default function PeopleTable({
                   </th>
                 )}
                 <th className="px-4 py-2.5 font-semibold">Person</th>
-                <th className="px-3 py-2.5 font-semibold">Inboxes</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Emails</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Unread</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Last</th>
+                <th className="px-3 py-2.5 font-semibold">
+                  <SortHeader
+                    label="Inboxes"
+                    sortKey="inbox"
+                    active={sortSpec}
+                    onClick={onSortChange}
+                  />
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  <SortHeader
+                    label="Emails"
+                    sortKey="attachments"
+                    active={sortSpec}
+                    onClick={onSortChange}
+                    align="right"
+                  />
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  <SortHeader
+                    label="Unread"
+                    sortKey="unread"
+                    active={sortSpec}
+                    onClick={onSortChange}
+                    align="right"
+                  />
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  <SortHeader
+                    label="Last"
+                    sortKey="recency"
+                    active={sortSpec}
+                    onClick={onSortChange}
+                    align="right"
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>
-              {people.map((person) => {
+              {items.map((item) => {
+                if (item.type === "group") {
+                  return (
+                    <GroupTableRow
+                      key={`g_${item.id}`}
+                      group={item}
+                      onSelect={() => onSelectConversation?.(item)}
+                      onMarkRead={onMarkConversationRead}
+                      hasCheckboxColumn={selectedIds !== undefined}
+                      isSelected={
+                        selectedConversationIds?.has(item.id) ?? false
+                      }
+                      onToggleSelected={onToggleSelectedConversation}
+                    />
+                  );
+                }
+                const person = item;
                 const color = avatarColor(person.email);
                 const isSelected = selectedIds?.has(person.id) ?? false;
                 return (
@@ -287,7 +489,251 @@ export default function PeopleTable({
           </table>
         )}
       </div>
+
+      {/* Pagination footer — only renders when the parent passes the
+          paging plumbing in. Mirrors PersonList's footer so list and
+          table view feel consistent. */}
+      {typeof total === "number" &&
+        typeof page === "number" &&
+        typeof pageSize === "number" &&
+        onPageChange && (
+          <PageFooter
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={onPageChange}
+            visibleCount={items.length}
+          />
+        )}
     </div>
+  );
+}
+
+interface PageFooterProps {
+  total: number;
+  page: number;
+  pageSize: number;
+  visibleCount: number;
+  onPageChange: (page: number) => void;
+}
+
+function PageFooter({
+  total,
+  page,
+  pageSize,
+  visibleCount,
+  onPageChange,
+}: PageFooterProps) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = total === 0 ? 0 : Math.min(start + visibleCount - 1, total);
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-bg-subtle/40 px-4 py-2">
+      <span className="text-[11px] font-medium text-text-tertiary">
+        {total === 0
+          ? "No results"
+          : `Showing ${start}–${end} of ${total.toLocaleString()}`}
+      </span>
+      {totalPages > 1 && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary disabled:opacity-30 disabled:hover:bg-transparent"
+            aria-label="Previous page"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <span className="text-[11px] font-medium text-text-tertiary tabular-nums">
+            {page} / {totalPages}
+          </span>
+          <button
+            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary disabled:opacity-30 disabled:hover:bg-transparent"
+            aria-label="Next page"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Solid palette for stacked group avatars — see GroupRow.tsx for the
+// rationale (transparent overlapping circles look muddy). These are the
+// opaque equivalents of PersonList's rgba(_, 0.12-0.16) values
+// composited over a white card, so groups visually match the rest of
+// the avatars when viewed solo.
+const GROUP_AVATAR_PALETTE = [
+  { bg: "#efebff", fg: "#5b3ce6" },
+  { bg: "#e4f8ec", fg: "#15803d" },
+  { bg: "#fdebf5", fg: "#be185d" },
+  { bg: "#fef0e4", fg: "#c2410c" },
+  { bg: "#e3f6fe", fg: "#0369a1" },
+  { bg: "#f3e7fe", fg: "#7e22ce" },
+  { bg: "#def5f3", fg: "#0f766e" },
+  { bg: "#fcf3d7", fg: "#a16207" },
+];
+function groupAvatarColor(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return GROUP_AVATAR_PALETTE[h % GROUP_AVATAR_PALETTE.length];
+}
+
+interface GroupTableRowProps {
+  group: GroupedConversation;
+  onSelect: () => void;
+  onMarkRead?: (id: string) => void;
+  hasCheckboxColumn: boolean;
+  isSelected?: boolean;
+  onToggleSelected?: (id: string) => void;
+}
+
+/**
+ * Table row for a group conversation. Avatar stack + comma-separated
+ * names in the Person column; the conversation's inbox in the Inboxes
+ * column. Bulk select skips groups (they have their own mark-read).
+ */
+function GroupTableRow({
+  group,
+  onSelect,
+  onMarkRead,
+  hasCheckboxColumn,
+  isSelected = false,
+  onToggleSelected,
+}: GroupTableRowProps) {
+  const visible = group.participants.slice(0, 3);
+  const overflow = Math.max(0, group.participants.length - visible.length);
+  const AVATAR = 28;
+  const OVERLAP = 10;
+  const stackWidth =
+    AVATAR +
+    Math.max(0, visible.length + (overflow > 0 ? 1 : 0) - 1) *
+      (AVATAR - OVERLAP);
+  const namesLine = group.participants
+    .map((p) => {
+      if (p.name && p.name.trim()) return p.name.trim().split(/\s+/)[0];
+      return p.email.split("@")[0];
+    })
+    .slice(0, 4)
+    .join(", ");
+  const namesOverflow =
+    group.participants.length - Math.min(4, group.participants.length);
+
+  return (
+    <tr
+      onClick={onSelect}
+      className={cn(
+        "group cursor-pointer border-b border-border/60 transition-colors",
+        isSelected ? "bg-text-primary/[0.04]" : "hover:bg-text-primary/[0.025]",
+      )}
+      data-testid="group-row"
+      data-conversation-id={group.id}
+    >
+      {hasCheckboxColumn && (
+        <td className="w-10 px-4 py-2.5">
+          <RowCheckbox
+            checked={isSelected}
+            onChange={() => onToggleSelected?.(group.id)}
+            ariaLabel={`Select group ${group.id}`}
+          />
+        </td>
+      )}
+      <td className="px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <span
+            className="relative shrink-0"
+            style={{ width: stackWidth, height: AVATAR }}
+          >
+            {visible.map((p, i) => {
+              const color = groupAvatarColor(p.email);
+              return (
+                <span
+                  key={p.id}
+                  title={p.name || p.email}
+                  className="absolute flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: color.bg,
+                    color: color.fg,
+                    left: i * (AVATAR - OVERLAP),
+                    top: 0,
+                    zIndex: 10 - i,
+                  }}
+                >
+                  {initials(p.name, p.email)}
+                </span>
+              );
+            })}
+            {overflow > 0 && (
+              <span
+                className="absolute flex h-7 w-7 items-center justify-center rounded-full bg-bg-muted text-[10px] font-semibold text-text-secondary"
+                style={{
+                  left: visible.length * (AVATAR - OVERLAP),
+                  top: 0,
+                  zIndex: 10 - visible.length,
+                }}
+                title={`+${overflow} more participants`}
+              >
+                +{overflow}
+              </span>
+            )}
+          </span>
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text-primary">
+              <Users size={11} className="shrink-0 text-text-tertiary" />
+              <span className="truncate">
+                {namesLine}
+                {namesOverflow > 0 ? `, +${namesOverflow}` : ""}
+              </span>
+            </p>
+            <p className="truncate text-xs font-light text-text-tertiary">
+              {group.participants.length} participants
+            </p>
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2.5">
+        <span
+          className="inline-flex items-center rounded-[5px] bg-bg-muted px-2 py-0.5 text-[11px] font-medium text-text-secondary"
+          title={group.inbox}
+        >
+          {group.inbox.split("@")[0]}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        <span className="inline-flex items-center gap-1.5 text-xs tabular-nums text-text-secondary">
+          {group.hasAttachment === 1 && (
+            <Paperclip size={11} className="text-text-tertiary" />
+          )}
+          {group.totalCount}
+        </span>
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        {group.unreadCount > 0 ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkRead?.(group.id);
+            }}
+            title="Mark all as read"
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums text-white transition-all hover:scale-110"
+            style={{ backgroundColor: "#7c5cfc" }}
+          >
+            {group.unreadCount}
+          </button>
+        ) : (
+          <span className="text-xs text-text-tertiary">—</span>
+        )}
+      </td>
+      <td className="px-4 py-2.5 text-right">
+        <span className="text-xs font-light tabular-nums text-text-tertiary">
+          {relTime(group.lastEmailAt)}
+        </span>
+      </td>
+    </tr>
   );
 }
 

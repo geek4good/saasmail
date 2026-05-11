@@ -11,6 +11,7 @@ import { hashKey } from "./lib/crypto";
 import { handleEmail } from "./email-handler";
 import { peopleRouter } from "./routers/people-router";
 import { emailsRouter } from "./routers/emails-router";
+import { conversationsRouter } from "./routers/conversations-router";
 import { sendRouter } from "./routers/send-router";
 import { attachmentsRouter } from "./routers/attachments-router";
 import { statsRouter } from "./routers/stats-router";
@@ -31,6 +32,7 @@ import type { MiddlewareHandler } from "hono";
 import { injectAllowedInboxes } from "./middleware/inject-allowed-inboxes";
 import { requirePasskey } from "./middleware/require-passkey";
 import { passkeys } from "./db/auth.schema";
+import { appSettings } from "./db/app-settings.schema";
 import { isDevEnvironment } from "./lib/is-dev";
 
 const app = new OpenAPIHono<{
@@ -187,6 +189,7 @@ const requireAdmin: MiddlewareHandler<{
 // API Routes
 app.route("/api/people", peopleRouter);
 app.route("/api/emails", emailsRouter);
+app.route("/api/conversations", conversationsRouter);
 app.route("/api/send", sendRouter);
 app.route("/api/attachments", attachmentsRouter);
 app.route("/api/stats", statsRouter);
@@ -207,11 +210,22 @@ app.route("/api/admin/inboxes", adminInboxesRouter);
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
 // Public runtime config (no auth) — consumed by the SPA
-app.get("/api/config", (c) =>
-  c.json({
+app.get("/api/config", async (c) => {
+  const db = c.get("db");
+  const row = await db
+    .select({ value: appSettings.value })
+    .from(appSettings)
+    .where(eq(appSettings.key, "brand_name"))
+    .limit(1);
+  const brandName =
+    row.length > 0 && row[0].value && row[0].value.length > 0
+      ? row[0].value
+      : "saasmail";
+  return c.json({
     passkeyRequired: !isDevEnvironment(c.env),
-  }),
-);
+    brandName,
+  });
+});
 
 // Swagger UI
 app.get("/swagger-ui", swaggerUI({ url: "/doc" }));

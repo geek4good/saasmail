@@ -22,13 +22,15 @@ test.describe("push notifications", () => {
     // inboxes.spec, etc.).
     await page.goto("/settings");
 
-    // Either VAPID is configured → "Notifications" heading is visible, or it
-    // is not configured → the disabled-state stub message is shown instead.
-    const heading = page.getByRole("heading", { name: "Notifications" });
-    const disabledStub = page.getByText(
-      /Push notifications are not configured on this saasmail deployment/,
-    );
-
-    await expect(heading.or(disabledStub)).toBeVisible();
+    // The Settings page redesign always renders a "Notifications"
+    // section heading, regardless of whether push is configured. The
+    // body underneath swaps between the configured UI and the
+    // disabled-state stub. Asserting the heading is enough — it
+    // guarantees the section mounted; the .or() of the previous
+    // version triggered Playwright strict-mode because both elements
+    // are now present in the unconfigured state too.
+    await expect(
+      page.getByRole("heading", { name: "Notifications" }),
+    ).toBeVisible();
   });
 });

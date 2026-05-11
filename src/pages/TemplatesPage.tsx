@@ -1,9 +1,22 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, FileText, Pencil, Trash2 } from "lucide-react";
+import { Plus, FileText, Pencil, Trash2, Hash } from "lucide-react";
 import { fetchTemplates, deleteTemplate } from "@/lib/api";
 import type { EmailTemplate } from "@/lib/api";
 import PageHeader, { PageContainer } from "@/components/PageHeader";
+
+/** Count {{varName}} tokens in subject + body — shown as a small badge
+ *  on each template row so the list hints at template complexity at a
+ *  glance without opening the editor. */
+function countVariables(t: EmailTemplate): number {
+  const re = /\{\{(\w+)\}\}/g;
+  const seen = new Set<string>();
+  for (const src of [t.subject, t.bodyHtml]) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) seen.add(m[1]);
+  }
+  return seen.size;
+}
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -56,49 +69,64 @@ export default function TemplatesPage() {
         ) : (
           <div className="overflow-hidden rounded-[8px] bg-card ring-1 ring-border">
             <ul className="divide-y divide-border/60">
-              {templates.map((t) => (
-                <li
-                  key={t.id}
-                  data-testid="template-row"
-                  data-template-name={t.name}
-                  data-template-slug={t.slug}
-                  className="group flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-text-primary/[0.02]"
-                >
-                  <Link
-                    to={`/templates/${t.slug}/edit`}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              {templates.map((t) => {
+                const varCount = countVariables(t);
+                return (
+                  <li
+                    key={t.id}
+                    data-testid="template-row"
+                    data-template-name={t.name}
+                    data-template-slug={t.slug}
+                    className="group flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-text-primary/[0.02]"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-bg-muted">
-                      <FileText size={14} className="text-text-tertiary" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-text-primary">
-                        {t.name}
-                      </p>
-                      <p className="truncate text-xs font-light text-text-tertiary">
-                        <span className="font-mono">{t.slug}</span> ·{" "}
-                        {t.subject}
-                      </p>
+                    <Link
+                      to={`/templates/${t.slug}/edit`}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-bg-muted">
+                        <FileText size={14} className="text-text-tertiary" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-medium text-text-primary">
+                            {t.name}
+                          </p>
+                          {varCount > 0 && (
+                            <span
+                              title={`${varCount} variable${varCount === 1 ? "" : "s"}`}
+                              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-violet/10 px-1.5 py-0.5 text-[10px] font-mono"
+                              style={{ color: "#7c5cfc" }}
+                            >
+                              <Hash size={9} />
+                              {varCount}
+                            </span>
+                          )}
+                        </div>
+                        <p className="truncate text-xs font-light text-text-tertiary">
+                          <span className="font-mono">{t.slug}</span> ·{" "}
+                          {t.subject}
+                        </p>
+                      </div>
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+                      <button
+                        onClick={() => navigate(`/templates/${t.slug}/edit`)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
+                      >
+                        <Pencil size={12} />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(t.slug)}
+                        aria-label="Delete"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
-                  </Link>
-                  <div className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
-                    <button
-                      onClick={() => navigate(`/templates/${t.slug}/edit`)}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-muted hover:text-text-primary"
-                    >
-                      <Pencil size={12} />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(t.slug)}
-                      aria-label="Delete"
-                      className="inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

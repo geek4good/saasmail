@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useBranding } from "@/lib/branding";
 
 interface NavItem {
   label: string;
@@ -39,6 +40,7 @@ const PRIMARY_NAV: NavItem[] = [
 
 export default function TopNav() {
   const { data: session } = useSession();
+  const { brandName } = useBranding();
   const navigate = useNavigate();
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
@@ -66,7 +68,8 @@ export default function TopNav() {
         }`}
       >
         <div className="flex items-center justify-between px-2 py-1">
-          {/* Brand — Mail glyph in lime; keeps the SAASMAIL wordmark */}
+          {/* Brand — Mail glyph in lime; wordmark text comes from
+              app_settings (admin-editable) and falls back to "saasmail". */}
           <Link
             to="/"
             className="flex items-center gap-1.5 pl-2 text-base font-extrabold uppercase tracking-tight text-white transition-opacity duration-150 hover:opacity-80"
@@ -77,7 +80,7 @@ export default function TopNav() {
               style={{ color: "#BFFF00" }}
               aria-hidden
             />
-            saasmail
+            {brandName}
           </Link>
 
           {/* Primary nav (desktop) */}
@@ -180,6 +183,9 @@ export default function TopNav() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
+                <p className="px-2 py-1 text-[10px] font-light text-text-tertiary">
+                  Signature visibility moved to Settings
+                </p>
                 <DropdownMenuItem
                   data-testid="logout-button"
                   onClick={() => signOut()}

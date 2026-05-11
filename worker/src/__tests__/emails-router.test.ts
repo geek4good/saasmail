@@ -217,6 +217,82 @@ describe("emails router", () => {
       const res = await authFetch("/api/emails/nonexistent", { apiKey });
       expect(res.status).toBe(404);
     });
+
+    it("returns a sent email when the id belongs to the sent_emails table", async () => {
+      // Reproduces the Reply-on-our-own-message bug: thread mode lets you
+      // click Reply on any visible bubble, including our own sent
+      // replies. The lookup must transparently fall back to sent_emails
+      // so the composer can render its "what you're replying to" panel.
+      const db = getDb();
+      await createTestPerson({ id: "s1", email: "a@test.com" });
+      const now = Math.floor(Date.now() / 1000);
+      await db.insert(sentEmails).values({
+        id: "se-thread",
+        personId: "s1",
+        fromAddress: "inbox@saasmail.test",
+        toAddress: "a@test.com",
+        subject: "Re: Feature request",
+        bodyHtml: "<p>thanks for the suggestion</p>",
+        bodyText: "thanks for the suggestion",
+        resendId: null,
+        status: "sent",
+        sentAt: now,
+        createdAt: now,
+      });
+
+      const res = await authFetch("/api/emails/se-thread", { apiKey });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.id).toBe("se-thread");
+      expect(data.type).toBe("sent");
+      expect(data.fromAddress).toBe("inbox@saasmail.test");
+      expect(data.toAddress).toBe("a@test.com");
+      expect(data.subject).toBe("Re: Feature request");
+      expect(data.recipient).toBeNull();
+      expect(data.isRead).toBeNull();
+      expect(data.cc).toEqual([]);
+    });
+
+    it("returns 404 when a non-admin tries to fetch a sent email from an inbox they don't own", async () => {
+      // Negative-path complement to the happy case above. The
+      // sent_emails fallback in getEmailRoute applies the same
+      // ownership check as the reply route — only surface a sent row
+      // to a caller who still owns the inbox that sent it. Guards
+      // against id-guessing a teammate's outgoing message.
+      const { apiKey, userId } = await createTestUser({
+        id: "u-getsent-1",
+        role: "member",
+        email: "member-getsent@x.com",
+      });
+      await grantInbox(userId, "a@x.com");
+      await createTestPerson({
+        id: "p-getsent-1",
+        email: "target@external.com",
+      });
+      const db = getDb();
+      const now = Math.floor(Date.now() / 1000);
+      await db.insert(sentEmails).values({
+        id: "se-other-inbox-get",
+        personId: "p-getsent-1",
+        // fromAddress belongs to a different inbox the caller does NOT have
+        // permission for. They must not be able to see it via id-guess.
+        fromAddress: "b@x.com",
+        toAddress: "target@external.com",
+        subject: "Other user's outgoing",
+        bodyHtml: "<p>private</p>",
+        bodyText: null,
+        messageId: "<orig@b.test>",
+        resendId: "r-other-2",
+        status: "sent",
+        sentAt: now,
+        createdAt: now,
+      });
+
+      const res = await authFetch("/api/emails/se-other-inbox-get", {
+        apiKey,
+      });
+      expect(res.status).toBe(404);
+    });
   });
 
   describe("PATCH /api/emails/:id", () => {

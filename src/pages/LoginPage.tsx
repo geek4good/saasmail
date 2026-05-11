@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Mail, Fingerprint, ArrowRight } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { useBranding } from "@/lib/branding";
 
 export default function LoginPage() {
+  const { brandName } = useBranding();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
@@ -86,7 +88,7 @@ export default function LoginPage() {
             aria-hidden
           />
           <h1 className="text-2xl font-extrabold uppercase tracking-tight text-white">
-            saasmail
+            {brandName}
           </h1>
           <p className="mt-2 text-sm font-light text-white/50">
             One unified timeline per customer

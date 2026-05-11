@@ -21,6 +21,7 @@ const StatsSchema = z.object({
     z.object({
       email: z.string(),
       displayName: z.string().nullable(),
+      signatureHtml: z.string().nullable(),
     }),
   ),
 });
@@ -91,6 +92,7 @@ statsRouter.openapi(statsRoute, async (c) => {
       senderIdentities: identityRows.map((r) => ({
         email: r.email,
         displayName: r.displayName,
+        signatureHtml: r.signatureHtml,
       })),
     },
     200,

@@ -1,5 +1,6 @@
 import { Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBranding } from "@/lib/branding";
 
 interface WordmarkProps {
   className?: string;
@@ -11,6 +12,7 @@ interface WordmarkProps {
  * Inherits color from parent so it reads on both light and dark surfaces.
  */
 export function Wordmark({ className }: WordmarkProps) {
+  const { brandName } = useBranding();
   return (
     <span
       className={cn(
@@ -18,7 +20,7 @@ export function Wordmark({ className }: WordmarkProps) {
         className,
       )}
     >
-      saasmail
+      {brandName}
     </span>
   );
 }
@@ -29,6 +31,7 @@ export function Wordmark({ className }: WordmarkProps) {
  * uppercase brand line. Sits above the auth card on the dark backdrop.
  */
 export function WordmarkLarge({ className }: WordmarkProps) {
+  const { brandName } = useBranding();
   return (
     <div
       className={cn("flex flex-col items-center gap-3 text-white", className)}
@@ -40,7 +43,7 @@ export function WordmarkLarge({ className }: WordmarkProps) {
         aria-hidden
       />
       <h1 className="text-2xl font-extrabold uppercase tracking-tight">
-        saasmail
+        {brandName}
       </h1>
     </div>
   );

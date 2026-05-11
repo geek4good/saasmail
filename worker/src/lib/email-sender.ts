@@ -16,6 +16,8 @@ function parseFrom(input: string): { name?: string; address: string } {
 export interface SendEmailParams {
   from: string;
   to: string;
+  /** Optional CC list — each entry can be a bare address or "Name <addr>". */
+  cc?: string[];
   subject: string;
   html: string;
   text?: string;
@@ -44,6 +46,7 @@ class ResendSender implements EmailSender {
     const result = await this.client.emails.send({
       from: params.from,
       to: params.to,
+      ...(params.cc && params.cc.length > 0 ? { cc: params.cc } : {}),
       subject: params.subject,
       html: params.html,
       text: params.text,
@@ -69,6 +72,16 @@ class CloudflareSender implements EmailSender {
       const msg = createMimeMessage();
       msg.setSender(name ? { name, addr: address } : { addr: address });
       msg.setRecipient(params.to);
+      if (params.cc && params.cc.length > 0) {
+        for (const c of params.cc) {
+          const parsed = parseFrom(c);
+          msg.setCc(
+            parsed.name
+              ? { name: parsed.name, addr: parsed.address }
+              : { addr: parsed.address },
+          );
+        }
+      }
       msg.setSubject(params.subject);
       if (params.text) {
         msg.addMessage({ contentType: "text/plain", data: params.text });
@@ -101,8 +114,10 @@ class NoopSender implements EmailSender {
 class DemoSender implements EmailSender {
   readonly provider = "demo" as const;
   async send(params: SendEmailParams): Promise<SendEmailResult> {
+    const ccLabel =
+      params.cc && params.cc.length > 0 ? `, cc: ${params.cc.join(", ")}` : "";
     console.log(
-      `[demo] Pretending to send email from ${params.from} to ${params.to} (subject: "${params.subject}")`,
+      `[demo] Pretending to send email from ${params.from} to ${params.to}${ccLabel} (subject: "${params.subject}")`,
     );
     return { id: `demo_${nanoid(10)}`, error: null };
   }

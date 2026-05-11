@@ -1,0 +1,6 @@
+[2025-09-30 14:22:01.443] INFO  webhook.delivery deliver_id=wh_8821 endpoint=/events status=200 ms=98
+[2025-09-30 14:22:03.110] INFO  webhook.delivery deliver_id=wh_8822 endpoint=/events status=200 ms=104
+[2025-09-30 14:22:05.881] WARN  webhook.delivery deliver_id=wh_8823 endpoint=/events status=504 ms=30000 retry=1
+[2025-09-30 14:22:35.901] WARN  webhook.delivery deliver_id=wh_8823 endpoint=/events status=504 ms=30000 retry=2
+[2025-09-30 14:23:05.918] ERROR webhook.delivery deliver_id=wh_8823 endpoint=/events status=504 ms=30000 retries_exhausted
+[2025-09-30 14:23:11.224] INFO  webhook.delivery deliver_id=wh_8824 endpoint=/events status=200 ms=87

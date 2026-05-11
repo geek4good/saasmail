@@ -4,6 +4,10 @@ import { senderIdentities } from "../db/sender-identities.schema";
 import { inboxPermissions } from "../db/inbox-permissions.schema";
 import { emails } from "../db/emails.schema";
 import { json200Response, json201Response } from "../lib/helpers";
+import {
+  MAX_SIGNATURE_HTML_LENGTH,
+  sanitizeSignatureHtml,
+} from "../lib/sanitize-signature";
 import type { Variables } from "../variables";
 
 export const adminInboxesRouter = new OpenAPIHono<{
@@ -15,6 +19,7 @@ const InboxRowSchema = z.object({
   email: z.string(),
   displayName: z.string().nullable(),
   displayMode: z.enum(["thread", "chat"]),
+  signatureHtml: z.string().nullable(),
   assignedUserIds: z.array(z.string()),
 });
 
@@ -35,6 +40,7 @@ adminInboxesRouter.openapi(listInboxesRoute, async (c) => {
     email: string;
     displayName: string | null;
     displayMode: "thread" | "chat" | null;
+    signatureHtml: string | null;
     assignedUserIds: string | null;
   };
   const rows = await db.all<Row>(sql`
@@ -47,6 +53,7 @@ adminInboxesRouter.openapi(listInboxesRoute, async (c) => {
       u.email AS email,
       s.display_name AS displayName,
       s.display_mode AS displayMode,
+      s.signature_html AS signatureHtml,
       (
         SELECT COALESCE(
           '[' || GROUP_CONCAT('"' || ip.user_id || '"') || ']',
@@ -65,6 +72,7 @@ adminInboxesRouter.openapi(listInboxesRoute, async (c) => {
       email: r.email,
       displayName: r.displayName,
       displayMode: r.displayMode ?? "chat",
+      signatureHtml: r.signatureHtml,
       assignedUserIds: r.assignedUserIds ? JSON.parse(r.assignedUserIds) : [],
     })),
     200,
@@ -96,6 +104,7 @@ const createInboxRoute = createRoute({
         email: z.string(),
         displayName: z.string().nullable(),
         displayMode: z.enum(["thread", "chat"]),
+        signatureHtml: z.string().nullable(),
         assignedUserIds: z.array(z.string()),
       }),
       "Created inbox",
@@ -136,16 +145,36 @@ adminInboxesRouter.openapi(createInboxRoute, async (c) => {
     updatedAt: now,
   });
 
-  return c.json({ email, displayName, displayMode, assignedUserIds: [] }, 201);
+  return c.json(
+    {
+      email,
+      displayName,
+      displayMode,
+      signatureHtml: null,
+      assignedUserIds: [],
+    },
+    201,
+  );
 });
 
 const PatchInboxBodySchema = z
   .object({
     displayName: z.string().nullable().optional(),
     displayMode: z.enum(["thread", "chat"]).optional(),
+    // Length cap prevents a single admin from blowing up storage and
+    // the outbound-email payload. Real content is sanitized further
+    // by `sanitizeSignatureHtml` in the handler.
+    signatureHtml: z
+      .string()
+      .max(MAX_SIGNATURE_HTML_LENGTH)
+      .nullable()
+      .optional(),
   })
   .refine(
-    (b) => b.displayName !== undefined || b.displayMode !== undefined,
+    (b) =>
+      b.displayName !== undefined ||
+      b.displayMode !== undefined ||
+      b.signatureHtml !== undefined,
     "must update at least one field",
   );
 
@@ -154,7 +183,7 @@ const patchInboxRoute = createRoute({
   path: "/{email}",
   tags: ["Admin Inboxes"],
   description:
-    "Update display name and/or display mode for an inbox. Row is deleted only when both fields are at defaults (null + 'chat').",
+    "Update display name, display mode, and/or signature HTML for an inbox. Row is deleted only when all three fields are at defaults (null + 'chat' + null).",
   request: {
     params: z.object({ email: z.string() }),
     body: {
@@ -171,6 +200,7 @@ const patchInboxRoute = createRoute({
         email: z.string(),
         displayName: z.string().nullable(),
         displayMode: z.enum(["thread", "chat"]),
+        signatureHtml: z.string().nullable(),
       }),
       "Updated",
     ),
@@ -202,11 +232,33 @@ adminInboxesRouter.openapi(patchInboxRoute, async (c) => {
     body.displayMode !== undefined
       ? body.displayMode
       : (currentRow?.displayMode ?? "chat");
+  // Sanitize at write time. Strips scripts / event handlers /
+  // javascript: URLs before storage so a compromised admin token
+  // can't turn this field into a stored-XSS vector for the rest of
+  // the org. See sanitize-signature.ts for the threat model.
+  const nextSignatureHtml =
+    body.signatureHtml !== undefined
+      ? body.signatureHtml === "" || body.signatureHtml === null
+        ? null
+        : await sanitizeSignatureHtml(body.signatureHtml)
+      : (currentRow?.signatureHtml ?? null);
 
-  // Both fields at defaults → delete the row to keep the table sparse.
-  if (nextDisplayName === null && nextDisplayMode === "chat") {
+  // All fields at defaults → delete the row to keep the table sparse.
+  if (
+    nextDisplayName === null &&
+    nextDisplayMode === "chat" &&
+    nextSignatureHtml === null
+  ) {
     await db.delete(senderIdentities).where(eq(senderIdentities.email, email));
-    return c.json({ email, displayName: null, displayMode: "chat" }, 200);
+    return c.json(
+      {
+        email,
+        displayName: null,
+        displayMode: "chat",
+        signatureHtml: null,
+      },
+      200,
+    );
   }
 
   await db
@@ -215,6 +267,7 @@ adminInboxesRouter.openapi(patchInboxRoute, async (c) => {
       email,
       displayName: nextDisplayName,
       displayMode: nextDisplayMode,
+      signatureHtml: nextSignatureHtml,
       createdAt: now,
       updatedAt: now,
     })
@@ -223,12 +276,18 @@ adminInboxesRouter.openapi(patchInboxRoute, async (c) => {
       set: {
         displayName: nextDisplayName,
         displayMode: nextDisplayMode,
+        signatureHtml: nextSignatureHtml,
         updatedAt: now,
       },
     });
 
   return c.json(
-    { email, displayName: nextDisplayName, displayMode: nextDisplayMode },
+    {
+      email,
+      displayName: nextDisplayName,
+      displayMode: nextDisplayMode,
+      signatureHtml: nextSignatureHtml,
+    },
     200,
   );
 });

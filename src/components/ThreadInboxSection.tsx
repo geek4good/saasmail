@@ -1,5 +1,8 @@
+import { Fragment } from "react";
 import { MessageSquare, Inbox } from "lucide-react";
 import MessageBubble from "@/components/MessageBubble";
+import { RosterDiffNotice } from "@/components/CcChips";
+import { rosterOf } from "@/lib/roster";
 import type { Email } from "@/lib/api";
 
 export interface ThreadInboxGroup {
@@ -11,6 +14,14 @@ export interface ThreadInboxGroup {
 interface ThreadInboxSectionProps {
   group: ThreadInboxGroup;
   personEmail: string;
+  internalDomains?: string[];
+  /**
+   * Per-bubble sender override — used in group conversations where
+   * each bubble has a different sender.
+   */
+  senderResolver?: (
+    email: Email,
+  ) => { email: string; name: string | null } | null;
   isOlderExpanded: boolean;
   onToggleOlder: () => void;
   onOpenHtml: (email: Email) => void;
@@ -22,6 +33,8 @@ interface ThreadInboxSectionProps {
 export default function ThreadInboxSection({
   group,
   personEmail,
+  internalDomains = [],
+  senderResolver,
   isOlderExpanded,
   onToggleOlder,
   onOpenHtml,
@@ -59,28 +72,56 @@ export default function ThreadInboxSection({
           </div>
         )}
         {isOlderExpanded &&
-          olderChronological.map((email) => (
+          olderChronological.map((email, idx) => {
+            const prev = olderChronological[idx - 1];
+            return (
+              <Fragment key={email.id}>
+                {prev && (
+                  <RosterDiffNotice
+                    prev={rosterOf(prev, senderResolver)}
+                    next={rosterOf(email, senderResolver)}
+                    internalDomains={internalDomains}
+                  />
+                )}
+                <MessageBubble
+                  email={email}
+                  personEmail={personEmail}
+                  internalDomains={internalDomains}
+                  senderResolver={senderResolver}
+                  onOpenHtml={onOpenHtml}
+                  onMarkRead={onMarkRead}
+                  onReply={onReply}
+                  onDelete={onDelete}
+                />
+              </Fragment>
+            );
+          })}
+        {latest && (
+          <Fragment>
+            {/* Roster diff between the last "older" email shown and the latest */}
+            {isOlderExpanded && olderChronological.length > 0 && (
+              <RosterDiffNotice
+                prev={rosterOf(
+                  olderChronological[olderChronological.length - 1],
+                  senderResolver,
+                )}
+                next={rosterOf(latest, senderResolver)}
+                internalDomains={internalDomains}
+              />
+            )}
             <MessageBubble
-              key={email.id}
-              email={email}
+              key={latest.id}
+              email={latest}
               personEmail={personEmail}
+              internalDomains={internalDomains}
+              senderResolver={senderResolver}
               onOpenHtml={onOpenHtml}
               onMarkRead={onMarkRead}
               onReply={onReply}
               onDelete={onDelete}
+              renderHtml
             />
-          ))}
-        {latest && (
-          <MessageBubble
-            key={latest.id}
-            email={latest}
-            personEmail={personEmail}
-            onOpenHtml={onOpenHtml}
-            onMarkRead={onMarkRead}
-            onReply={onReply}
-            onDelete={onDelete}
-            renderHtml
-          />
+          </Fragment>
         )}
       </div>
     </section>

@@ -1,0 +1,10 @@
+Weekly Sync - Notes
+
+Attendees: Lin, Pavel, Maya, Diego
+
+1. Webhook reliability work shipped to staging Tuesday. Carla on pilot.
+2. CC roster-change feature is in QA. Need design review by Thursday.
+3. Procurement pipeline: 4 deals at quote stage, 2 awaiting RFP turnaround.
+4. Action item - Pavel to draft incident summary by EOW.
+
+Next sync: Wednesday 11am PT.

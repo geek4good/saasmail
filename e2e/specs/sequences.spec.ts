@@ -50,33 +50,36 @@ test.describe.serial("sequences CRUD", () => {
   test("create 3-step sequence appears in list", async ({ page }) => {
     await page.goto("/sequences");
 
-    await page.getByRole("button", { name: "New Sequence" }).click();
+    await page.getByRole("button", { name: /new sequence/i }).click();
     await expect(page).toHaveURL(/\/sequences\/new/);
 
-    // Fill in name
-    await page
-      .getByPlaceholder("e.g., Welcome Sequence")
-      .fill("E2E Test Sequence");
+    // Fill in name. The placeholder copy was tightened in the redesign:
+    //   "e.g., Welcome Sequence" → "Welcome onboarding".
+    await page.getByPlaceholder("Welcome onboarding").fill("E2E Test Sequence");
 
-    // Step 1 is pre-populated — set template + delay
+    // Step 1 is pre-populated — set template + delay. Playwright's
+    // selectOption({label: ...}) only accepts strings, not regex, so
+    // we select by the option's `value` attribute (the template slug)
+    // which is unambiguous and immune to label-format tweaks like the
+    // recent "<name> · <slug>" change.
     const step1 = page.getByTestId(TEST_IDS.sequenceStepRow).nth(0);
-    await step1.locator("select").selectOption({ label: "Welcome" });
+    await step1.locator("select").selectOption("welcome");
     await step1.locator("input[type=number]").fill("0");
 
-    // Add step 2
-    await page.getByRole("button", { name: "+ Add step" }).click();
+    // Add step 2. The button reads "Add step" (no leading "+").
+    await page.getByRole("button", { name: "Add step" }).click();
     const step2 = page.getByTestId(TEST_IDS.sequenceStepRow).nth(1);
-    await step2.locator("select").selectOption({ label: "Follow-up" });
+    await step2.locator("select").selectOption("followup");
     await step2.locator("input[type=number]").fill("24");
 
     // Add step 3
-    await page.getByRole("button", { name: "+ Add step" }).click();
+    await page.getByRole("button", { name: "Add step" }).click();
     const step3 = page.getByTestId(TEST_IDS.sequenceStepRow).nth(2);
-    await step3.locator("select").selectOption({ label: "Closing" });
+    await step3.locator("select").selectOption("closing");
     await step3.locator("input[type=number]").fill("48");
 
-    // Save
-    await page.getByRole("button", { name: "Create" }).click();
+    // Save (button reads "Create sequence" in new mode).
+    await page.getByRole("button", { name: "Create sequence" }).click();
 
     // Should redirect back to sequences list
     await expect(page).toHaveURL(/\/sequences$/);
@@ -115,8 +118,8 @@ test.describe.serial("sequences CRUD", () => {
     // Only 2 steps should remain
     await expect(page.getByTestId(TEST_IDS.sequenceStepRow)).toHaveCount(2);
 
-    // Save
-    await page.getByRole("button", { name: "Update" }).click();
+    // Save (button reads "Save changes" in edit mode).
+    await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page).toHaveURL(/\/sequences$/);
 
     // Row now shows 2 steps
@@ -158,12 +161,14 @@ test.describe.serial("sequences CRUD", () => {
     // Visit the sequence detail page
     await page.goto(`/sequences/${apiSequenceId}`);
 
-    // Enrollment row for alice should be present and show "active"
+    // Enrollment row for alice should be present and show "Active".
+    // Status badges are now case-styled ("Active") so match
+    // case-insensitively.
     const enrollmentRow = page
       .getByTestId(TEST_IDS.enrollmentRow)
       .filter({ hasText: "alice@customers.test" });
     await expect(enrollmentRow).toBeVisible();
-    await expect(enrollmentRow).toContainText("active");
+    await expect(enrollmentRow).toContainText(/active/i);
   });
 
   // ── 4. Cancel enrollment — status flips to cancelled ────────────────────────
@@ -176,15 +181,16 @@ test.describe.serial("sequences CRUD", () => {
       .getByTestId(TEST_IDS.enrollmentRow)
       .filter({ hasText: "alice@customers.test" });
     await expect(enrollmentRow).toBeVisible();
-    await expect(enrollmentRow).toContainText("active");
+    await expect(enrollmentRow).toContainText(/active/i);
 
     // Click Cancel and accept the confirm dialog
     page.once("dialog", (dialog) => dialog.accept());
     await enrollmentRow.getByRole("button", { name: "Cancel" }).click();
 
-    // Status badge should flip to "cancelled"
-    await expect(enrollmentRow).toContainText("cancelled");
-    // The Cancel button should no longer be visible (only shown for "active")
+    // Status badge should flip to "Cancelled" (case-insensitive match —
+    // the redesign capitalizes status labels).
+    await expect(enrollmentRow).toContainText(/cancelled/i);
+    // The Cancel button should no longer be visible (only shown for active)
     await expect(
       enrollmentRow.getByRole("button", { name: "Cancel" }),
     ).not.toBeVisible();

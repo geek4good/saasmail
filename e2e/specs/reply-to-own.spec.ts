@@ -28,8 +28,10 @@ test.describe.serial("reply to own sent message", () => {
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    // Slim tray header now reads "New message" (or "New message · <to>"
+    // once a recipient is set) — case-insensitive regex covers both.
     await expect(
-      dialog.getByRole("heading", { name: "Compose" }),
+      dialog.getByRole("heading", { name: /new message/i }),
     ).toBeVisible();
 
     await dialog.getByLabel("To").fill("alice@customers.test");
