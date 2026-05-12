@@ -218,11 +218,6 @@ function Bubble({
             className="prose prose-sm relative max-h-[200px] max-w-none overflow-hidden px-4 py-3 text-xs text-text-secondary [&_*]:max-w-full [&_a]:pointer-events-none [&_img]:max-h-24 [&_img]:max-w-full [&_table]:!w-full [&_table]:!table-fixed"
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
-          {/* Fade-out gradient */}
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white via-white/85 to-transparent"
-            aria-hidden
-          />
         </div>
       ) : (
         <div
