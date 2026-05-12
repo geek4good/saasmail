@@ -213,10 +213,9 @@ function Bubble({
             isUnread ? "outline outline-2 outline-violet/40" : ""
           }`}
         >
-          {/* Capped, sanitized inline preview — blurred so the user opens the original to read it */}
+          {/* Capped, sanitized inline preview */}
           <div
-            className="prose prose-sm pointer-events-none relative max-h-[200px] max-w-none overflow-hidden px-4 py-3 text-xs text-text-secondary blur-sm select-none [&_*]:max-w-full [&_a]:pointer-events-none [&_img]:max-h-24 [&_img]:max-w-full [&_table]:!w-full [&_table]:!table-fixed"
-            aria-hidden
+            className="prose prose-sm relative max-h-[200px] max-w-none overflow-hidden px-4 py-3 text-xs text-text-secondary [&_*]:max-w-full [&_a]:pointer-events-none [&_img]:max-h-24 [&_img]:max-w-full [&_table]:!w-full [&_table]:!table-fixed"
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
           {/* Fade-out gradient */}
