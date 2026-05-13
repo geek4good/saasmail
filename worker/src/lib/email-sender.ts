@@ -13,6 +13,26 @@ function parseFrom(input: string): { name?: string; address: string } {
   return { address: input.trim() };
 }
 
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const chunks: string[] = [];
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    let binary = "";
+    for (let j = 0; j < chunk.length; j++) {
+      binary += String.fromCharCode(chunk[j]!);
+    }
+    chunks.push(binary);
+  }
+  return btoa(chunks.join(""));
+}
+
+export interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  data: Uint8Array;
+}
+
 export interface SendEmailParams {
   from: string;
   to: string;
@@ -22,6 +42,7 @@ export interface SendEmailParams {
   html: string;
   text?: string;
   headers?: Record<string, string>;
+  attachments?: EmailAttachment[];
 }
 
 export interface SendEmailResult {
@@ -51,6 +72,10 @@ class ResendSender implements EmailSender {
       html: params.html,
       text: params.text,
       headers: params.headers,
+      attachments: params.attachments?.map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.data),
+      })),
     });
     if (result.error) {
       return {
@@ -93,6 +118,14 @@ class CloudflareSender implements EmailSender {
         for (const [key, value] of Object.entries(params.headers)) {
           msg.setHeader(key, value);
         }
+      }
+      for (const att of params.attachments ?? []) {
+        msg.addAttachment({
+          filename: att.filename,
+          contentType: att.contentType,
+          data: uint8ArrayToBase64(att.data),
+          encoding: "base64",
+        });
       }
       const message = new EmailMessage(address, params.to, msg.asRaw());
       const result = await this.binding.send(message);

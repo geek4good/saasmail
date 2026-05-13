@@ -1,15 +1,31 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import {
   applyMigrations,
   cleanDb,
   createTestUser,
   createTestPerson,
+  createTestEmail,
   authFetch,
   getDb,
 } from "./helpers";
 import { people } from "../db/people.schema";
 import { sentEmails } from "../db/sent-emails.schema";
+import { attachments } from "../db/attachments.schema";
+
+function makeFormData(fields: Record<string, string>): FormData {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  return fd;
+}
+
+const BASE_FIELDS = {
+  to: "newperson@example.com",
+  fromAddress: "me@saasmail.test",
+  subject: "Hello",
+  bodyHtml: "<p>Hi</p>",
+};
 
 describe("send router", () => {
   let apiKey: string;
@@ -28,12 +44,7 @@ describe("send router", () => {
       const res = await authFetch("/api/send", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
-          to: "newperson@example.com",
-          fromAddress: "me@saasmail.test",
-          subject: "Hello",
-          bodyHtml: "<p>Hi</p>",
-        }),
+        body: makeFormData(BASE_FIELDS),
       });
       expect(res.status).toBe(201);
 
@@ -50,12 +61,7 @@ describe("send router", () => {
       const res = await authFetch("/api/send", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
-          to: "newperson@example.com",
-          fromAddress: "me@saasmail.test",
-          subject: "Hello",
-          bodyHtml: "<p>Hi</p>",
-        }),
+        body: makeFormData(BASE_FIELDS),
       });
       const body = (await res.json()) as { id: string };
 
@@ -77,7 +83,7 @@ describe("send router", () => {
       const res = await authFetch("/api/send", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
+        body: makeFormData({
           to: "existing@example.com",
           fromAddress: "me@saasmail.test",
           subject: "Hi again",
@@ -100,6 +106,231 @@ describe("send router", () => {
         .where(eq(sentEmails.id, body.id));
       expect(sentRows[0].personId).toBe("existing-1");
     });
+
+    it("sends without attachments (regression)", async () => {
+      const res = await authFetch("/api/send", {
+        apiKey,
+        method: "POST",
+        body: makeFormData(BASE_FIELDS),
+      });
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+
+      const db = getDb();
+      const attRows = await db
+        .select()
+        .from(attachments)
+        .where(eq(attachments.sentEmailId, id));
+      expect(attRows).toHaveLength(0);
+    });
+
+    it("stores sent attachment in DB and R2", async () => {
+      const fd = makeFormData(BASE_FIELDS);
+      fd.append(
+        "attachments",
+        new File(["hello"], "hello.txt", { type: "text/plain" }),
+      );
+
+      const res = await authFetch("/api/send", {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+
+      const db = getDb();
+      const attRows = await db
+        .select()
+        .from(attachments)
+        .where(eq(attachments.sentEmailId, id));
+      expect(attRows).toHaveLength(1);
+      expect(attRows[0].filename).toBe("hello.txt");
+      expect(attRows[0].contentType).toBe("text/plain");
+      expect(attRows[0].size).toBe(5);
+
+      const r2Obj = await env.R2.get(attRows[0].r2Key);
+      expect(r2Obj).not.toBeNull();
+    });
+
+    it("stores multiple attachments", async () => {
+      const fd = makeFormData(BASE_FIELDS);
+      fd.append(
+        "attachments",
+        new File(["a"], "a.txt", { type: "text/plain" }),
+      );
+      fd.append(
+        "attachments",
+        new File(["b"], "b.txt", { type: "text/plain" }),
+      );
+
+      const res = await authFetch("/api/send", {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+
+      const db = getDb();
+      const attRows = await db
+        .select()
+        .from(attachments)
+        .where(eq(attachments.sentEmailId, id));
+      expect(attRows).toHaveLength(2);
+    });
+
+    it("rejects more than 10 attachments", async () => {
+      const fd = makeFormData(BASE_FIELDS);
+      for (let i = 0; i < 11; i++) {
+        fd.append(
+          "attachments",
+          new File(["x"], `f${i}.txt`, { type: "text/plain" }),
+        );
+      }
+
+      const res = await authFetch("/api/send", {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/too many/i);
+    });
+
+    it("rejects attachments exceeding 25 MB total", async () => {
+      const fd = makeFormData(BASE_FIELDS);
+      fd.append(
+        "attachments",
+        new File([new Uint8Array(26 * 1024 * 1024)], "big.bin", {
+          type: "application/octet-stream",
+        }),
+      );
+
+      const res = await authFetch("/api/send", {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/25 mb/i);
+    });
+  });
+
+  describe("POST /api/send/reply/:emailId", () => {
+    it("stores attachment on freeform reply", async () => {
+      const person = await createTestPerson({
+        id: "person-1",
+        email: "alice@example.com",
+      });
+      const email = await createTestEmail({
+        id: "email-1",
+        personId: person.id,
+        recipient: "me@saasmail.test",
+        messageId: "<original@example.com>",
+      });
+
+      const fd = new FormData();
+      fd.append("fromAddress", "me@saasmail.test");
+      fd.append("bodyHtml", "<p>Reply</p>");
+      fd.append(
+        "attachments",
+        new File(["data"], "reply.pdf", { type: "application/pdf" }),
+      );
+
+      const res = await authFetch(`/api/send/reply/${email.id}`, {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+
+      const db = getDb();
+      const attRows = await db
+        .select()
+        .from(attachments)
+        .where(eq(attachments.sentEmailId, id));
+      expect(attRows).toHaveLength(1);
+      expect(attRows[0].filename).toBe("reply.pdf");
+      expect(attRows[0].contentType).toBe("application/pdf");
+    });
+
+    it("sends a freeform reply without attachments (regression)", async () => {
+      const person = await createTestPerson({
+        id: "person-2",
+        email: "bob@example.com",
+      });
+      const email = await createTestEmail({
+        id: "email-2",
+        personId: person.id,
+        recipient: "me@saasmail.test",
+      });
+
+      const fd = new FormData();
+      fd.append("fromAddress", "me@saasmail.test");
+      fd.append("bodyHtml", "<p>Reply</p>");
+
+      const res = await authFetch(`/api/send/reply/${email.id}`, {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(201);
+    });
+
+    it("rejects empty fromAddress with 400", async () => {
+      const person = await createTestPerson({
+        id: "person-3",
+        email: "charlie@example.com",
+      });
+      const email = await createTestEmail({
+        id: "email-3",
+        personId: person.id,
+        recipient: "me@saasmail.test",
+      });
+
+      const fd = new FormData();
+      fd.append("fromAddress", "");
+      fd.append("bodyHtml", "<p>Reply</p>");
+
+      const res = await authFetch(`/api/send/reply/${email.id}`, {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(400);
+      // Zod validates fromAddress as .email() — empty string fails format check
+      const body = (await res.json()) as { error: object };
+      expect(JSON.stringify(body.error).toLowerCase()).toContain("fromaddress");
+    });
+
+    it("rejects missing fromAddress with 400", async () => {
+      const person = await createTestPerson({
+        id: "person-4",
+        email: "dana@example.com",
+      });
+      const email = await createTestEmail({
+        id: "email-4",
+        personId: person.id,
+        recipient: "me@saasmail.test",
+      });
+
+      const fd = new FormData();
+      fd.append("bodyHtml", "<p>Reply</p>");
+
+      const res = await authFetch(`/api/send/reply/${email.id}`, {
+        apiKey,
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(400);
+      // Zod requires fromAddress as string — missing field fails type check
+      const body = (await res.json()) as { error: object };
+      expect(JSON.stringify(body.error).toLowerCase()).toContain("fromaddress");
+    });
   });
 
   describe("GET /api/people/grouped after sending", () => {
@@ -107,12 +338,7 @@ describe("send router", () => {
       const sendRes = await authFetch("/api/send", {
         apiKey,
         method: "POST",
-        body: JSON.stringify({
-          to: "newperson@example.com",
-          fromAddress: "me@saasmail.test",
-          subject: "Hello",
-          bodyHtml: "<p>Hi</p>",
-        }),
+        body: makeFormData(BASE_FIELDS),
       });
       expect(sendRes.status).toBe(201);
 

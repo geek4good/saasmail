@@ -1,12 +1,12 @@
 {
   "name": "saasmail",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "deploy": "vite build && wrangler deploy --minify",
+    "deploy": "vite build && wrangler d1 migrations apply saasmail-db --remote && wrangler deploy --minify",
     "deploy:demo": "vite build && wrangler deploy --minify --config wrangler.demo.jsonc",
     "auth:generate": "npx @better-auth/cli@latest generate --config worker/src/auth/index.ts --output worker/src/db/auth.schema.ts -y",
     "auth:migrate": "npx @better-auth/cli@latest migrate --config worker/src/auth/index.ts",
