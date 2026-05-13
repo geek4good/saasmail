@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "backup": "mkdir -p backups && wrangler d1 export saasmail-db --remote --output backups/$(date +%Y-%m-%d_%H%M%S).sql",
     "deploy": "vite build && wrangler d1 migrations apply saasmail-db --remote && wrangler deploy --minify",
+    "deploy:safe": "yarn backup && yarn deploy",
     "deploy:demo": "vite build && wrangler deploy --minify --config wrangler.demo.jsonc",
     "auth:generate": "npx @better-auth/cli@latest generate --config worker/src/auth/index.ts --output worker/src/db/auth.schema.ts -y",
     "auth:migrate": "npx @better-auth/cli@latest migrate --config worker/src/auth/index.ts",
